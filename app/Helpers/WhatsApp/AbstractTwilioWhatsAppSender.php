@@ -31,7 +31,7 @@ abstract class AbstractTwilioWhatsAppSender
 
         $twilio = new Client($sid, $token);
 
-        Log::error('SendSingleWhatsapp response', [
+        Log::error('AbstractTwilioWhatsAppSender parameters', [
             "from" => $this->getFrom(),
             "contentSid" => $this->getContentSid(),
             "contentVariables" => json_encode($this->getParameters())

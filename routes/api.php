@@ -43,6 +43,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
     // EMAIL
     Route::controller(EmailController::class)->group(function () {
+        Route::get('email/list', 'list');
         Route::post('email/send', 'send');
     });
     //CREDENCIALES

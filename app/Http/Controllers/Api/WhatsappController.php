@@ -96,6 +96,73 @@ class WhatsappController extends Controller
         }
     }
 
+    public function list(Request $request)
+    {
+        // 1. Parámetros de DataTables
+        $draw = $request->get('draw');
+        $start = $request->get("start");
+        $length = $request->get("length", 20); // Usamos 'length' si viene, sino 20 por defecto
+        $searchValue = $request->get('search')['value'] ?? null;
+        
+        // Ordenamiento
+        $columnIndex_arr = $request->get('order');
+        $columnName_arr = $request->get('columns');
+        $order_arr = $request->get('order');
+        
+        $columnIndex = $columnIndex_arr[0]['column'] ?? 0; 
+        $columnName = $columnName_arr[$columnIndex]['data'] ?? 'id'; 
+        $columnSortOrder = $order_arr[0]['dir'] ?? 'desc'; 
+
+        // 2. Consulta Base
+        $query = EnvioWhatsapp::with(['detalles', 'user']);
+
+        // 3. Total de registros (antes de filtrar)
+        $totalRecords = $query->count();
+
+        // 4. Búsqueda (Filtros)
+        // Importante: Usamos un grupo (closure) para que los 'OR' no rompan otras condiciones si las hubiera.
+        if (!empty($searchValue)) {
+            $query->where(function($q) use ($searchValue) {
+                $q->where('phone', 'like', '%' . $searchValue . '%')
+                ->orWhere('status', 'like', '%' . $searchValue . '%')
+                ->orWhere('message_id', 'like', '%' . $searchValue . '%')
+                ->orWhereHas('user', function($userQuery) use ($searchValue) {
+                    $userQuery->where('name', 'like', '%' . $searchValue . '%')
+                        ->orWhere('email', 'like', '%' . $searchValue . '%');
+                });
+            });
+        }
+
+        // 5. Total de registros filtrados (para la paginación correcta)
+        $totalRecordwithFilter = $query->count();
+
+        // 6. Ordenamiento Dinámico
+        // Verificamos si la columna es válida para ordenar directamente en SQL
+        $validSortColumns = ['id', 'phone', 'status', 'created_at', 'updated_at'];
+        
+        if (in_array($columnName, $validSortColumns)) {
+            $query->orderBy($columnName, $columnSortOrder);
+        } else {
+            // Por defecto si la columna no es ordenable (ej: una columna calculada o relación compleja)
+            $query->orderBy('id', 'DESC'); 
+        }
+
+        // 7. Paginación y Obtención de datos
+        $records = $query->skip($start)
+            ->take($length)
+            ->get();
+
+        // 8. Respuesta JSON
+        return response()->json([
+            'success' => true,
+            'draw' => intval($draw),
+            'iTotalRecords' => $totalRecords,
+            'iTotalDisplayRecords' => $totalRecordwithFilter,
+            'data' => $records,
+            'message' => 'Envíos de WhatsApp cargados con éxito!'
+        ]);
+    }
+
     public function webHook(Request $request)
     {
         // 1. Obtener el ID del mensaje del proveedor
@@ -168,89 +235,5 @@ class WhatsappController extends Controller
             'success' => true,
             'message' => 'Estado y detalle guardados correctamente'
         ], 202);
-    }
-
-    public function list(Request $request)
-    {
-        // 1. Parámetros de DataTables
-        $draw = $request->get('draw');
-        $start = $request->get("start");
-        $length = $request->get("length", 20); // Usamos 'length' si viene, sino 20 por defecto
-        $searchValue = $request->get('search')['value'] ?? null;
-        
-        // Ordenamiento
-        $columnIndex_arr = $request->get('order');
-        $columnName_arr = $request->get('columns');
-        $order_arr = $request->get('order');
-        
-        $columnIndex = $columnIndex_arr[0]['column'] ?? 0; 
-        $columnName = $columnName_arr[$columnIndex]['data'] ?? 'id'; 
-        $columnSortOrder = $order_arr[0]['dir'] ?? 'desc'; 
-
-        // 2. Consulta Base
-        $query = EnvioWhatsapp::with(['detalles', 'user']);
-
-        // 3. Total de registros (antes de filtrar)
-        $totalRecords = $query->count();
-
-        // 4. Búsqueda (Filtros)
-        // Importante: Usamos un grupo (closure) para que los 'OR' no rompan otras condiciones si las hubiera.
-        if (!empty($searchValue)) {
-            $query->where(function($q) use ($searchValue) {
-                $q->where('phone', 'like', '%' . $searchValue . '%')
-                ->orWhere('status', 'like', '%' . $searchValue . '%')
-                ->orWhere('message_id', 'like', '%' . $searchValue . '%')
-                // Opcional: Buscar por nombre del usuario relacionado
-                ->orWhereHas('user', function($userQuery) use ($searchValue) {
-                    $userQuery->where('name', 'like', '%' . $searchValue . '%')
-                                ->orWhere('email', 'like', '%' . $searchValue . '%');
-                });
-            });
-        }
-
-        // 5. Total de registros filtrados (para la paginación correcta)
-        $totalRecordwithFilter = $query->count();
-
-        // 6. Ordenamiento Dinámico
-        // Verificamos si la columna es válida para ordenar directamente en SQL
-        $validSortColumns = ['id', 'phone', 'status', 'created_at', 'updated_at'];
-        
-        if (in_array($columnName, $validSortColumns)) {
-            $query->orderBy($columnName, $columnSortOrder);
-        } else {
-            // Por defecto si la columna no es ordenable (ej: una columna calculada o relación compleja)
-            $query->orderBy('id', 'DESC'); 
-        }
-
-        // 7. Paginación y Obtención de datos
-        $records = $query->skip($start)
-            ->take($length)
-            ->get();
-
-        // 8. Mapeo de datos (Opcional pero recomendado para DataTables)
-        // Esto es útil si quieres dar formato a las fechas o mostrar el nombre del usuario en lugar del objeto
-        $data_arr = [];
-        
-        foreach($records as $record){
-            $data_arr[] = [
-                "id" => $record->id,
-                "user_name" => $record->user ? $record->user->name : 'N/A', // Acceso seguro a la relación
-                "phone" => $record->phone,
-                "status" => $record->status,
-                "message_id" => $record->message_id,
-                "created_at" => $record->created_at->format('Y-m-d H:i:s'), // Formato de fecha
-                "acciones" => '', // Aquí puedes poner botones HTML si los necesitas
-            ];
-        }
-
-        // 9. Respuesta JSON
-        return response()->json([
-            'success' => true,
-            'draw' => intval($draw),
-            'iTotalRecords' => $totalRecords,         // Total real en base de datos
-            'iTotalDisplayRecords' => $totalRecordwithFilter, // Total después del filtro de búsqueda
-            'data' => $data_arr, // O usa $records si no quieres el mapeo manual del paso 8
-            'message' => 'Envíos de WhatsApp cargados con éxito!'
-        ]);
     }
 }

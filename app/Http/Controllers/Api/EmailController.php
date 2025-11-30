@@ -101,6 +101,74 @@ class EmailController extends Controller
         }
     }
 
+    public function list(Request $request)
+    {
+        // 1. Parámetros de DataTables
+        $draw = $request->get('draw');
+        $start = $request->get("start");
+        $length = $request->get("length", 20); // Usamos 'length' si viene, sino 20 por defecto
+        $searchValue = $request->get('search')['value'] ?? null;
+        
+        // Ordenamiento
+        $columnIndex_arr = $request->get('order');
+        $columnName_arr = $request->get('columns');
+        $order_arr = $request->get('order');
+        
+        $columnIndex = $columnIndex_arr[0]['column'] ?? 0; 
+        $columnName = $columnName_arr[$columnIndex]['data'] ?? 'id'; 
+        $columnSortOrder = $order_arr[0]['dir'] ?? 'desc'; 
+
+        // 2. Consulta Base
+        $query = EnvioEmail::with(['detalles', 'user']); // Usamos el modelo EnvioEmail
+
+        // 3. Total de registros (antes de filtrar)
+        $totalRecords = $query->count();
+
+        // 4. Búsqueda (Filtros)
+        // Buscamos en email, status, message_id, sg_message_id y nombre/email del usuario.
+        if (!empty($searchValue)) {
+            $query->where(function($q) use ($searchValue) {
+                $q->where('email', 'like', '%' . $searchValue . '%')
+                ->orWhere('status', 'like', '%' . $searchValue . '%')
+                ->orWhere('message_id', 'like', '%' . $searchValue . '%')
+                ->orWhere('sg_message_id', 'like', '%' . $searchValue . '%')
+                ->orWhereHas('user', function($userQuery) use ($searchValue) {
+                    $userQuery->where('name', 'like', '%' . $searchValue . '%')
+                        ->orWhere('email', 'like', '%' . $searchValue . '%');
+                });
+            });
+        }
+
+        // 5. Total de registros filtrados (para la paginación correcta)
+        $totalRecordwithFilter = $query->count();
+
+        // 6. Ordenamiento Dinámico
+        // Columnas válidas para ordenar directamente en SQL
+        $validSortColumns = ['id', 'email', 'status', 'message_id', 'sg_message_id', 'created_at', 'updated_at'];
+        
+        if (in_array($columnName, $validSortColumns)) {
+            $query->orderBy($columnName, $columnSortOrder);
+        } else {
+            // Por defecto si la columna no es ordenable
+            $query->orderBy('id', 'DESC'); 
+        }
+
+        // 7. Paginación y Obtención de datos
+        $records = $query->skip($start)
+            ->take($length)
+            ->get();
+
+        // 8. Respuesta JSON
+        return response()->json([
+            'success' => true,
+            'draw' => intval($draw),
+            'iTotalRecords' => $totalRecords, 
+            'iTotalDisplayRecords' => $totalRecordwithFilter, 
+            'data' => $records, 
+            'message' => 'Envíos de Email cargados con éxito!'
+        ]);
+    }
+
     public function webHook(Request $request)
     {
         $events = json_decode($request->getContent(), true) ?? [];

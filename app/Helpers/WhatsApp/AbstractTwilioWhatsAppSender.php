@@ -3,6 +3,7 @@
 namespace App\Helpers\WhatsApp;
 
 use Twilio\Rest\Client;
+use Illuminate\Support\Facades\Log;
 
 abstract class AbstractTwilioWhatsAppSender
 {
@@ -29,6 +30,12 @@ abstract class AbstractTwilioWhatsAppSender
         $token = $credenciales['auth_token'] ?? config('services.twilio.auth_token');
 
         $twilio = new Client($sid, $token);
+
+        Log::error('SendSingleWhatsapp response', [
+            "from" => $this->getFrom(),
+            "contentSid" => $this->getContentSid(),
+            "contentVariables" => json_encode($this->getParameters())
+        ]);
         
         try {
             

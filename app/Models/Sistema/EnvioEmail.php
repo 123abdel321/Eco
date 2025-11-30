@@ -18,7 +18,6 @@ class EnvioEmail extends Model
     protected $fillable = [
         'user_id',
         'message_id',
-        'sg_message_id',
         'email',
         'contexto',
         'status',

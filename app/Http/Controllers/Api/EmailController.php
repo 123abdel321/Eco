@@ -100,4 +100,97 @@ class EmailController extends Controller
             ], 500);
         }
     }
+
+    public function webHook(Request $request)
+    {
+        $events = json_decode($request->getContent(), true) ?? [];
+
+        foreach ($events as $event) {
+            try {
+                // 1. Extracción y limpieza de datos del evento
+                $sgMessageId = $event['message_id'] ?? null;
+                $sgEventId = $event['sg_event_id'] ?? null;
+                $smtpId = $event['smtp-id'] ?? null;
+                // El smtp-id puede venir con <>
+                $smtpId = $smtpId ? trim($smtpId, '<>') : null; 
+                $eventType = $event['event'] ?? null;
+                $email = $event['email'] ?? null;
+                $timestamp = $event['timestamp'] ?? null;
+
+                $trackingId = null;
+
+                // 2. Determinar el ID de rastreo (usando la lógica para separar el ID corto/largo)
+                if ($sgMessageId && str_contains($sgMessageId, '.')) {
+                    // Si el message_id es un formato largo, tomamos la primera parte (el ID corto)
+                    $trackingId = explode('.', $sgMessageId)[0];
+                } elseif ($sgMessageId) {
+                    // Si es un ID corto o simple
+                    $trackingId = $sgMessageId;
+                }
+                // Si no se encuentra message_id, usar smtp-id (sin el @dominio) como fallback.
+                elseif ($smtpId && !str_contains($smtpId, '@')) {
+                    $trackingId = $smtpId;
+                }
+
+                // 3. Buscar el registro de EnvioEmail
+                $envio = null;
+
+                if ($trackingId) {
+                    $envio = EnvioEmail::where('message_id', 'LIKE', $trackingId . '%')
+                        ->orWhere('message_id', $trackingId)
+                        ->first();
+                }
+                
+                // 4. Si se encuentra el registro, actualizar estado y registrar detalle
+                if ($envio) {
+                    $newStatus = null;
+
+                    // Mapeo de eventos de SendGrid a constantes del modelo EnvioEmail
+                    if ($eventType === "delivered") {
+                        // El correo fue entregado al servidor del destinatario
+                        $newStatus = EnvioEmail::STATUS_ENTREGADO;
+                    } elseif ($eventType === "open") {
+                        // El destinatario abrió el correo
+                        $newStatus = EnvioEmail::STATUS_LEIDO;
+                    } elseif (in_array($eventType, ["bounce", "dropped", "spamreport", "blocked"])) {
+                        // El correo rebotó, fue eliminado o reportado como spam (falla final)
+                        $newStatus = EnvioEmail::STATUS_FALLIDO;
+                    }
+
+                    if ($newStatus) {
+                        $envio->status = $newStatus;
+                        $envio->message_id = $sgMessageId; 
+                        $envio->save();
+                    }
+                    
+                    // Registrar el detalle del evento
+                    EnvioEmailDetalle::create([
+                        'id_email' => $envio->id,
+                        'email' => $email,
+                        'event' => $eventType,
+                        'sg_event_id' => $sgEventId,
+                        'message_id' => $sgMessageId,
+                        'smtp_id' => $smtpId,
+                        'timestamp' => $timestamp,
+                        'campos_adicionales' => $event, // Guardar el evento completo para referencia
+                    ]);
+
+                } else {
+                    Log::warning('Webhook: No se encontro correo relacionado en EnvioEmail.', [
+                        'message_id_buscado' => $trackingId,
+                        'message_id_full' => $sgMessageId,
+                        'event' => $event,
+                    ]);
+                }
+
+            } catch (\Throwable $e) {
+                Log::error('Error al procesar un evento del Webhook', [
+                    'error' => $e->getMessage(),
+                    'event_data' => $event ?? 'N/A'
+                ]);
+            }
+        }
+
+        return response()->json(['status' => 'ok']);
+    }
 }

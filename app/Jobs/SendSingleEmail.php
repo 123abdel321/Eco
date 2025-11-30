@@ -4,12 +4,14 @@ namespace App\Jobs;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Bus\Batchable;
+use Illuminate\Mail\Mailable;
 use App\Helpers\RateLimitingHelper;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Queue\InteractsWithQueue;
+use Symfony\Component\Mailer\SentMessage;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 //MODELS
@@ -99,9 +101,41 @@ class SendSingleEmail implements ShouldQueue
                 'destinatario' => $this->email,
             ]);
 
-            // 5. Crear y enviar email (Mailable anónima)
-            $email = new RawHtmlMailable($this->asunto, $this->html, $this->archivos);
+            // 5. Crear la clase Mailable ANÓNIMA
+            $email = new class($this->aplicacion, $this->email, $this->asunto, $this->html, $this->archivos) extends Mailable {
+                
+                private $emailAsunto;
+                private $emailHtml;
+                private $emailArchivos;
 
+                public function __construct(string $aplicacion, string $email, string $asunto, string $html, array $archivos)
+                {
+                    // Almacenamos los datos necesarios para el método build()
+                    $this->emailAsunto = $asunto;
+                    $this->emailHtml = $html;
+                    $this->emailArchivos = $archivos;
+                }
+
+                public function build()
+                {
+                    $this->subject($this->emailAsunto)
+                         ->html($this->emailHtml); // Usamos el método html() de Mailable
+
+                    // Adjuntar archivos si existen
+                    foreach ($this->emailArchivos as $archivo) {
+                        // Decodificamos el contenido base64 antes de adjuntar
+                        $this->attachData(
+                            base64_decode($archivo['contenido']), 
+                            $archivo['nombre'], 
+                            ['mime' => $archivo['mime'] ?? 'application/octet-stream']
+                        );
+                    }
+
+                    return $this;
+                }
+            };
+            
+            // CRÍTICO: Forzar el remitente en el Mailable para asegurar que use la credencial.
             if ($fromAddress !== 'Configuración de remitente NO ENCONTRADA') {
                 $email->from($fromAddress, $fromName);
             }
@@ -109,12 +143,38 @@ class SendSingleEmail implements ShouldQueue
             // 6. Enviar con el driver configurado
             $response = Mail::mailer($driver)->to($this->email)->send($email);
 
-            // 7. Actualizar estado
-            $messageId = $response->getSymfonySentMessage()?->getMessageId();
+            // 7. Actualizar estado y obtener Message ID (AJUSTE CRÍTICO DE TIPO APLICADO AQUÍ)
+            $messageId = null;
             
+            if ($response instanceof \Illuminate\Mail\SentMessage) {
+                // Caso 1: Laravel devuelve el objeto wrapper esperado
+                $messageId = $response->getSymfonySentMessage()?->getMessageId();
+                Log::info('Respuesta de Mailer: SentMessage de Laravel recibido.', ['message_id' => $messageId]);
+
+            } elseif ($response instanceof SentMessage) {
+                 // Caso 2: Laravel devuelve directamente el objeto de Symfony
+                $messageId = $response->getMessageId();
+                Log::info('Respuesta de Mailer: SentMessage de Symfony recibido.', ['message_id' => $messageId]);
+
+            } elseif ($response === 1 || $response === 0 || $response === true) {
+                // Caso 3 (TU CASO): El envío SMTP fue exitoso, pero el objeto no se recuperó (devuelve 0 o 1).
+                Log::info('Respuesta de Mailer: Respuesta numérica o booleana, asumiendo éxito.', [
+                    'response_type' => gettype($response),
+                    'response_value' => $response,
+                ]);
+                // Generamos un ID local temporal para el registro.
+                $messageId = 'SUCCESS_SENT_LOCAL-' . uniqid(); 
+            } else {
+                // Caso 4: Tipo de respuesta inesperado
+                Log::warning('Respuesta de Mailer: Tipo de respuesta inesperado.', ['response_type' => gettype($response)]);
+                $messageId = 'UNKNOWN_RESPONSE-' . uniqid();
+            }
+            
+            // 8. Actualizar el registro
             $envioEmail->update([
                 'status' => EnvioEmail::STATUS_ENVIADO,
-                'message_id' => $messageId,
+                // Usamos sg_message_id para guardar el ID de seguimiento (real o temporal)
+                'message_id' => $messageId, 
                 'campos_adicionales' => array_merge(
                     $envioEmail->campos_adicionales ?? [],
                     ['enviado_en' => now()->toISOString()],

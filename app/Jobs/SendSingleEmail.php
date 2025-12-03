@@ -16,8 +16,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 //MODELS
 use App\Models\CredencialEnvio;
-use App\Models\ConfiguracionEnvio;
 use App\Models\Sistema\EnvioEmail;
+use App\Models\Sistema\ConfiguracionEnvio;
 //MAIL
 use App\Mail\RawHtmlMailable;
 

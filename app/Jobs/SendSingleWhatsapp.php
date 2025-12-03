@@ -13,8 +13,8 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use App\Helpers\WhatsApp\SendTwilioWhatsApp;
 //MODELS
 use App\Models\CredencialEnvio;
-use App\Models\ConfiguracionEnvio;
 use App\Models\Sistema\EnvioWhatsapp;
+use App\Models\Sistema\ConfiguracionEnvio;
 use App\Models\Sistema\EnvioWhatsappDetalle;
 
 class SendSingleWhatsapp implements ShouldQueue

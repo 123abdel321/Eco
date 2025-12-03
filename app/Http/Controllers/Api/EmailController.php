@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use DB;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Auth;
@@ -11,37 +12,37 @@ use App\Jobs\SendSingleEmail;
 //MODELS
 use App\Models\User;
 use App\Models\CredencialEnvio;
-use App\Models\ConfiguracionEnvio;
 use App\Models\Sistema\EnvioEmail;
 use App\Models\Sistema\EnvioEmailDetalle;
+use App\Models\Sistema\ConfiguracionEnvio;
 
 class EmailController extends Controller
 {
     public function send(Request $request)
     {
+        $user = Auth::user();
+        $envioEmail = null; // Inicializamos a null
+        $usaCredencialesPropias = false;
+        $credencialUsuario = null;
+
+        // 1. Definición de la Validación
         $validator = Validator::make($request->all(), [
             'aplicacion' => 'required|string',
             'email' => 'required|email',
             'asunto' => 'required|string|max:255',
             'html' => 'required|string',
-            'archivos' => 'array',
+            'archivos' => 'nullable|array',
             'archivos.*.contenido' => 'required|string',
             'archivos.*.nombre' => 'required|string',
-            'archivos.*.mime' => 'string',
-            'metadata' => 'array',
+            'archivos.*.mime' => 'nullable|string',
+            'metadata' => 'nullable|array', // Lo hacemos nullable aquí para usar el coalescing operator
+            'filter_metadata' => 'nullable|array',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                "success" => false,
-                "message" => $validator->errors()
-            ], 422);
-        }
-
         try {
-            $user = Auth::user();
+            // --- 2. Pre-chequeo y Creación del Registro Principal (INTENTO) ---
 
-            // Verificar si el usuario tiene credenciales propias activas
+            // 2.1. Verificar credenciales antes de crear el registro
             $credencialUsuario = CredencialEnvio::porUsuario($user->id)
                 ->porTipo(CredencialEnvio::TIPO_EMAIL)
                 ->activas()
@@ -50,22 +51,58 @@ class EmailController extends Controller
 
             $usaCredencialesPropias = !is_null($credencialUsuario);
 
-            // 1. Crear registro en la base de datos
+            // 2.2. Crear el registro BASE en la tabla envios_email (Usamos valores seguros/placeholders)
+            // Esto asegura que siempre tendremos un registro del intento.
             $envioEmail = EnvioEmail::create([
                 'user_id' => $user->id,
-                'email' => $request->email,
-                'contexto' => $request->metadata['contexto'] ?? $request->aplicacion,
+                // Usamos el operador coalescente para evitar fallos de DB si los campos requeridos faltan
+                'email' => $request->email ?? 'FALLO_VALIDACION',
+                'contexto' => $request->metadata['contexto'] ?? $request->aplicacion ?? 'email.api',
                 'status' => EnvioEmail::STATUS_EN_COLA,
+                'filter_metadata' => $request->filter_metadata ?? [],
                 'campos_adicionales' => [
-                    'asunto' => $request->asunto,
-                    'aplicacion' => $request->aplicacion,
+                    'asunto' => $request->asunto ?? 'FALLO_VALIDACION',
+                    'aplicacion' => $request->aplicacion ?? 'api',
                     'metadata' => $request->metadata ?? [],
                     'usa_credenciales_propias' => $usaCredencialesPropias,
                     'credencial_id' => $credencialUsuario?->id,
+                    'html_preview' => substr($request->html ?? '', 0, 500) . '...', // Truncamos el HTML para el log
+                    'archivos' => $request->archivos ?? [],
+                    'raw_request' => $request->all(), // Guardamos el payload completo
                 ]
             ]);
 
-            // 2. Enviar el email mediante un job
+            // 2.3. Evaluación de la Validación
+            if ($validator->fails()) {
+                // Si la validación FALLA, registramos el fallo en el registro creado y terminamos.
+                
+                $errorMessages = $validator->errors()->all();
+                $fullErrorMessage = implode('; ', $errorMessages);
+
+                // Actualizar el estado del registro recién creado
+                $envioEmail->update(['status' => EnvioEmail::STATUS_FALLIDO]);
+                
+                // Crear un detalle de fallo inmediato
+                EnvioEmailDetalle::create([
+                    'id_email' => $envioEmail->id, // Asumo que la columna de enlace es 'id_email'
+                    'email' => $request->email ?? 'validation_error',
+                    'event' => 'Error API (Validación)',
+                    'response' => ['errors' => $errorMessages],
+                    'error_message' => 'Fallo de validación en la solicitud: ' . $fullErrorMessage,
+                    'timestamp' => now(),
+                    'campos_adicionales' => ['request_data' => $request->all()],
+                ]);
+                
+                // Devolver la respuesta de error de validación (422)
+                return response()->json([
+                    "success" => false,
+                    "message" => $validator->errors()
+                ], 422);
+            }
+            
+            // --- 3. Despacho (Si la Validación es Exitosa) ---
+            
+            // 2. Enviar el email mediante un job (Solo si pasa la validación)
             SendSingleEmail::dispatch(
                 $request->aplicacion,
                 $request->email,
@@ -76,8 +113,9 @@ class EmailController extends Controller
                 $envioEmail->id,
                 $user->id
             );
+            
+            // --- 4. Respuesta de Éxito ---
 
-            // 3. Obtener configuración para mostrar límites
             $configEmail = ConfiguracionEnvio::porTipo(ConfiguracionEnvio::TIPO_EMAIL)->first();
 
             return response()->json([
@@ -94,9 +132,39 @@ class EmailController extends Controller
             ], 202);
 
         } catch (\Exception $e) {
+            
+            // --- 5. Manejo de Fallos Imprevistos (Fallo de DB, u otro error fatal) ---
+
+            $errorMessage = "Error al intentar crear el envío o despachar el Job: " . $e->getMessage();
+            Log::error('EmailController@send: Error fatal', [
+                'error' => $errorMessage,
+                'request' => $request->all(),
+            ]);
+
+            // Si el registro se creó antes del fallo (protección)
+            if ($envioEmail) {
+                 // Actualizar el estado a FALLIDO
+                $envioEmail->update(['status' => EnvioEmail::STATUS_FALLIDO]);
+                
+                // Crear un detalle de fallo
+                EnvioEmailDetalle::create([
+                    'id_email' => $envioEmail->id,
+                    'email' => $request->email ?? 'fatal_error',
+                    'event' => 'Error API (Fatal)',
+                    'response' => ['error_interno' => $errorMessage],
+                    'error_message' => 'Fallo interno. El envío no pudo ser procesado.',
+                    'timestamp' => now(),
+                    'campos_adicionales' => [
+                        'exception_class' => get_class($e),
+                        'line' => $e->getLine(),
+                        'request_data' => $request->all(),
+                    ],
+                ]);
+            }
+
             return response()->json([
                 "success" => false,
-                "message" => $e->getMessage()
+                "message" => "Fallo interno del servidor. Contacte a soporte: " . $e->getMessage()
             ], 500);
         }
     }
@@ -106,7 +174,7 @@ class EmailController extends Controller
         // 1. Parámetros de DataTables
         $draw = $request->get('draw');
         $start = $request->get("start");
-        $length = $request->get("length", 20); // Usamos 'length' si viene, sino 20 por defecto
+        $length = $request->get("length", 20);
         $searchValue = $request->get('search')['value'] ?? null;
         
         // Ordenamiento
@@ -119,46 +187,60 @@ class EmailController extends Controller
         $columnSortOrder = $order_arr[0]['dir'] ?? 'desc'; 
 
         // 2. Consulta Base
-        $query = EnvioEmail::with(['detalles', 'user']); // Usamos el modelo EnvioEmail
+        $query = EnvioEmail::with(['detalles', 'user'])->select(
+            '*',
+            DB::raw("DATE_FORMAT(created_at, '%Y-%m-%d %T') AS fecha_creacion"),
+            DB::raw("DATE_FORMAT(updated_at, '%Y-%m-%d %T') AS fecha_edicion")
+        );
 
         // 3. Total de registros (antes de filtrar)
         $totalRecords = $query->count();
+        
+        // --- 4. Filtro Dinámico en JSON (filter_metadata) ---
+        // Excluir parámetros que ya son de DataTables o de uso interno
+        $ignoredParams = ['draw', 'start', 'length', 'search', 'order', 'columns', '_'];
 
-        // 4. Búsqueda (Filtros)
-        // Buscamos en email, status, message_id, sg_message_id y nombre/email del usuario.
+        foreach ($request->query() as $key => $value) {
+            // Aplicar el filtro si el parámetro NO es uno ignorado y tiene valor
+            if (!in_array($key, $ignoredParams) && !is_null($value)) {
+                // Filtro para campos específicos de la tabla (ej: 'status=enviado')
+                if (Schema::hasColumn('envios_email', $key)) {
+                    $query->where($key, $value);
+                }
+                
+                // Filtro para la metadata JSON
+                $query->whereJsonContains("filter_metadata->{$key}", $value);
+            }
+        }
+        
+        // 5. Búsqueda general de DataTables (se mantiene)
         if (!empty($searchValue)) {
             $query->where(function($q) use ($searchValue) {
                 $q->where('email', 'like', '%' . $searchValue . '%')
                 ->orWhere('status', 'like', '%' . $searchValue . '%')
                 ->orWhere('message_id', 'like', '%' . $searchValue . '%')
-                ->orWhere('sg_message_id', 'like', '%' . $searchValue . '%')
-                ->orWhereHas('user', function($userQuery) use ($searchValue) {
-                    $userQuery->where('name', 'like', '%' . $searchValue . '%')
-                        ->orWhere('email', 'like', '%' . $searchValue . '%');
-                });
+                ->orWhere('sg_message_id', 'like', '%' . $searchValue . '%');
             });
         }
 
-        // 5. Total de registros filtrados (para la paginación correcta)
+        // 6. Total de registros filtrados (para la paginación correcta)
         $totalRecordwithFilter = $query->count();
 
-        // 6. Ordenamiento Dinámico
-        // Columnas válidas para ordenar directamente en SQL
+        // 7. Ordenamiento Dinámico (se mantiene)
         $validSortColumns = ['id', 'email', 'status', 'message_id', 'sg_message_id', 'created_at', 'updated_at'];
         
         if (in_array($columnName, $validSortColumns)) {
             $query->orderBy($columnName, $columnSortOrder);
         } else {
-            // Por defecto si la columna no es ordenable
             $query->orderBy('id', 'DESC'); 
         }
 
-        // 7. Paginación y Obtención de datos
+        // 8. Paginación y Obtención de datos (se mantiene)
         $records = $query->skip($start)
             ->take($length)
             ->get();
 
-        // 8. Respuesta JSON
+        // 9. Respuesta JSON (se mantiene)
         return response()->json([
             'success' => true,
             'draw' => intval($draw),
@@ -167,6 +249,89 @@ class EmailController extends Controller
             'data' => $records, 
             'message' => 'Envíos de Email cargados con éxito!'
         ]);
+    }
+
+    public function detail(Request $request)
+    {
+        try {
+            // 1. Extracción de Parámetros DataTables
+            $draw = $request->get('draw');
+            $start = $request->get("start");
+            // Se usa $length para la paginación, si no está definido, usamos un valor sensato.
+            $length = $request->get("length", 20); 
+            
+            // ID del envío principal (parámetro esencial para este método)
+            $emailId = $request->get('id'); 
+            
+            // Parámetros de ordenamiento
+            $columnIndex_arr = $request->get('order');
+            $columnName_arr = $request->get('columns');
+            $order_arr = $request->get('order');
+            
+            // Determinación de la columna y el orden para la consulta
+            $columnIndex = $columnIndex_arr[0]['column'] ?? 0; 
+            $columnName = $columnName_arr[$columnIndex]['data'] ?? 'id'; 
+            $columnSortOrder = $order_arr[0]['dir'] ?? 'desc'; 
+
+            if (!$emailId) {
+                 return response()->json([
+                    'success' => false,
+                    'message' => 'El parámetro "id" del envío es obligatorio.',
+                ], 400);
+            }
+
+            // 2. Consulta Base y Filtro de Seguridad
+            $query = EnvioEmailDetalle::with('email')
+                // 2.1. Filtro por el ID del envío principal
+                ->where('id_email', $emailId);
+
+            // 3. Total de registros filtrados (antes de la paginación)
+            $totalRecordwithFilter = $query->count();
+            // Para el detalle, el total de registros es igual al total filtrado.
+            $totalRecords = $totalRecordwithFilter; 
+            
+            // 4. Ordenamiento Dinámico
+            // Define las columnas válidas para ordenar en la tabla EnvioEmailDetalle
+            $validSortColumns = ['id', 'created_at', 'updated_at', 'status_evento']; 
+            
+            if (in_array($columnName, $validSortColumns)) {
+                $query->orderBy($columnName, $columnSortOrder);
+            } else {
+                // Por defecto, ordena por la columna de creación de forma descendente.
+                $query->orderBy('created_at', 'DESC'); 
+            }
+
+            // 5. Selección de Columnas (incluyendo formato de fechas)
+            $query->select(
+                '*',
+                // Usamos la función de DB para formatear fechas
+                DB::raw("DATE_FORMAT(created_at, '%Y-%m-%d %T') AS fecha_creacion"),
+                DB::raw("DATE_FORMAT(updated_at, '%Y-%m-%d %T') AS fecha_edicion")
+            );
+
+            // 6. Paginación y Obtención de datos
+            $records = $query->skip($start)
+                ->take($length)
+                ->get();
+            
+            // 7. Respuesta JSON
+            return response()->json([
+                'success' => true,
+                'draw' => intval($draw),
+                'iTotalRecords' => $totalRecords, 
+                'iTotalDisplayRecords' => $totalRecordwithFilter, 
+                'data' => $records, 
+                'message' => 'Emails detalle generado con éxito!'
+            ]);
+
+        } catch (Exception $e) {
+
+            return response()->json([
+                "success" => false,
+                'data' => [],
+                "message" => "Ocurrió un error al procesar la solicitud: " . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function webHook(Request $request)

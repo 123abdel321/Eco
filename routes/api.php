@@ -40,11 +40,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::controller(WhatsappController::class)->group(function () {
         Route::get('whatsapp/list', 'list');
         Route::post('whatsapp/send', 'send');
+        Route::get('whatsapp/detail', 'detail');
     });
     // EMAIL
     Route::controller(EmailController::class)->group(function () {
         Route::get('email/list', 'list');
         Route::post('email/send', 'send');
+        Route::get('email/detail', 'detail');
     });
     //CREDENCIALES
     Route::controller(CredencialController::class)->prefix('credenciales')->group(function () {

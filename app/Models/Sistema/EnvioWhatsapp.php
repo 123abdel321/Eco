@@ -23,10 +23,12 @@ class EnvioWhatsapp extends Model
         'contexto',
         'status',
         'campos_adicionales',
+        'filter_metadata'
     ];
 
     protected $casts = [
         'campos_adicionales' => 'array',
+        'filter_metadata' => 'array'
     ];
 
     // Estados posibles

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
@@ -12,33 +13,34 @@ use App\Jobs\SendSingleWhatsapp;
 //MODELS
 use App\Models\User;
 use App\Models\CredencialEnvio;
-use App\Models\ConfiguracionEnvio;
 use App\Models\Sistema\EnvioWhatsapp;
+use App\Models\Sistema\ConfiguracionEnvio;
 use App\Models\Sistema\EnvioWhatsappDetalle;
 
 class WhatsappController extends Controller
 {
     public function send(Request $request)
     {
-        // 1. Validación
+        $user = Auth::user();
+        $envioWhatsapp = null; // Inicializamos a null
+        $usaCredencialesPropias = false;
+        $credencialUsuario = null;
+
+        // 1. Definición de la Validación (Mantenemos la definición de reglas)
         $validator = Validator::make($request->all(), [
             'phone' => 'required|string|regex:/^57\d{10}$/', 
             'plantilla_id' => 'required|string|max:255', 
             'parameters' => 'required|array',
             'contexto' => 'nullable|string|max:255',
+            'filter_metadata' => 'nullable|array', 
+            'aplicacion' => 'nullable|string|max:255',
         ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                "success" => false,
-                "message" => $validator->errors()
-            ], 422);
-        }
-
+        
+        // El bloque try ahora incluye la lógica de validación para asegurar el registro
         try {
-            $user = Auth::user();
-            
-            // Verificar si el usuario tiene credenciales propias activas
+            // --- 2. Pre-chequeo y Creación del Registro Principal (INTENTO) ---
+
+            // 2.1. Verificar credenciales antes de crear el registro
             $credencialUsuario = CredencialEnvio::porUsuario($user->id)
                 ->porTipo(CredencialEnvio::TIPO_WHATSAPP)
                 ->activas()
@@ -46,35 +48,69 @@ class WhatsappController extends Controller
                 ->first();
             
             $usaCredencialesPropias = !is_null($credencialUsuario);
-            
-            // 2. Crear el registro en la tabla envios_whatsapp
+
+            // 2.2. Crear el registro BASE en la tabla envios_whatsapp (Usamos valores seguros/placeholders)
             $envioWhatsapp = EnvioWhatsapp::create([
                 'user_id' => $user->id,
-                'plantilla_id' => $request->plantilla_id,
-                'phone' => $request->phone,
+                // Usamos el operador coalescente para evitar fallos de DB si los campos requeridos faltan
+                'plantilla_id' => $request->plantilla_id ?? 'FALLO_VALIDACION', 
+                'phone' => $request->phone ?? 'FALLO_VALIDACION',
                 'contexto' => $request->contexto ?? 'whatsapp.api_template',
-                'status' => EnvioWhatsapp::STATUS_EN_COLA,
+                // Inicialmente en cola (se actualizará inmediatamente si falla la validación)
+                'status' => EnvioWhatsapp::STATUS_EN_COLA, 
+                // Guardamos la metadata para el filtro (ya validada como array)
+                'filter_metadata' => $request->filter_metadata ?? [], 
                 'campos_adicionales' => [
                     'parameters' => $request->parameters,
                     'aplicacion' => $request->aplicacion ?? 'api',
                     'usa_credenciales_propias' => $usaCredencialesPropias,
                     'credencial_id' => $credencialUsuario?->id,
+                    'raw_request' => $request->all(), // Guardamos el payload completo en campos_adicionales
                 ]
             ]);
+
+            // 2.3. Evaluación de la Validación
+            if ($validator->fails()) {
+                // Si la validación FALLA, registramos el fallo y terminamos el proceso.
+                
+                $errorMessages = $validator->errors()->all();
+                $fullErrorMessage = implode('; ', $errorMessages);
+
+                // Actualizar el estado del registro recién creado
+                $envioWhatsapp->update(['status' => EnvioWhatsapp::STATUS_FALLIDO]);
+                
+                // Crear un detalle de fallo inmediato (para ver qué falló)
+                EnvioWhatsappDetalle::create([
+                    'id_whatsapp' => $envioWhatsapp->id,
+                    'phone' => $request->phone ?? 'validation_error',
+                    'event' => 'Error API (Validación)',
+                    'response' => ['errors' => $errorMessages],
+                    'error_message' => 'Fallo de validación en la solicitud: ' . $fullErrorMessage,
+                    'timestamp' => now(),
+                    'campos_adicionales' => ['request_data' => $request->all()],
+                ]);
+                
+                // Devolver la respuesta de error de validación (422)
+                return response()->json([
+                    "success" => false,
+                    "message" => $validator->errors()
+                ], 422);
+            }
             
-            // 3. Despachar el Job a la cola con el user_id para obtener credenciales
+            // --- 3. Despacho (Si la Validación es Exitosa) ---
+            
             SendSingleWhatsapp::dispatch(
                 $request->phone,
                 $request->plantilla_id,
                 $request->parameters,
                 $envioWhatsapp->id,
-                $user->id
+                $user->id 
             );
             
-            // 4. Obtener configuración para mostrar límites (solo informativo)
+            // --- 4. Respuesta de Éxito ---
+
             $configWhatsapp = ConfiguracionEnvio::porTipo(ConfiguracionEnvio::TIPO_WHATSAPP)->first();
             
-            // 5. Respuesta de la API
             return response()->json([
                 'success' => true,
                 'message' => 'Mensaje de WhatsApp encolado correctamente.',
@@ -89,78 +125,220 @@ class WhatsappController extends Controller
             ], 202);
 
         } catch (\Exception $e) {
+            
+            // --- 5. Manejo de Fallos Imprevistos (Fallo de DB, u otro error fatal) ---
+
+            $errorMessage = "Error al intentar crear el envío o despachar el Job: " . $e->getMessage();
+            Log::error('WhatsappController@send: Error fatal', [
+                'error' => $errorMessage,
+                'request' => $request->all(),
+            ]);
+
+            // Si el registro se creó antes del fallo (protección)
+            if ($envioWhatsapp) {
+                 // Actualizar el estado a FALLIDO
+                $envioWhatsapp->update(['status' => EnvioWhatsapp::STATUS_FALLIDO]);
+                
+                // Crear un detalle de fallo
+                EnvioWhatsappDetalle::create([
+                    'id_whatsapp' => $envioWhatsapp->id,
+                    'phone' => $request->phone ?? 'validation_error',
+                    'event' => 'Error API (Fatal)',
+                    'response' => ['error_interno' => $errorMessage],
+                    'error_message' => 'Fallo interno. El envío no pudo ser procesado.',
+                    'timestamp' => now(),
+                    'campos_adicionales' => [
+                        'exception_class' => get_class($e),
+                        'line' => $e->getLine(),
+                        'request_data' => $request->all(),
+                    ],
+                ]);
+            }
+
             return response()->json([
                 "success" => false,
-                "message" => $e->getMessage()
+                "message" => "Fallo interno del servidor. Contacte a soporte: " . $e->getMessage()
             ], 500);
         }
     }
 
     public function list(Request $request)
     {
-        // 1. Parámetros de DataTables
-        $draw = $request->get('draw');
-        $start = $request->get("start");
-        $length = $request->get("length", 20); // Usamos 'length' si viene, sino 20 por defecto
-        $searchValue = $request->get('search')['value'] ?? null;
-        
-        // Ordenamiento
-        $columnIndex_arr = $request->get('order');
-        $columnName_arr = $request->get('columns');
-        $order_arr = $request->get('order');
-        
-        $columnIndex = $columnIndex_arr[0]['column'] ?? 0; 
-        $columnName = $columnName_arr[$columnIndex]['data'] ?? 'id'; 
-        $columnSortOrder = $order_arr[0]['dir'] ?? 'desc'; 
+        try {
+            // 1. Parámetros de DataTables
+            $draw = $request->get('draw');
+            $start = $request->get("start");
+            $length = $request->get("length", 20); 
+            $searchValue = $request->get('search')['value'] ?? null;
+            
+            // Ordenamiento
+            $columnIndex_arr = $request->get('order');
+            $columnName_arr = $request->get('columns');
+            $order_arr = $request->get('order');
+            
+            $columnIndex = $columnIndex_arr[0]['column'] ?? 0; 
+            $columnName = $columnName_arr[$columnIndex]['data'] ?? 'id'; 
+            $columnSortOrder = $order_arr[0]['dir'] ?? 'desc'; 
 
-        // 2. Consulta Base
-        $query = EnvioWhatsapp::with(['detalles', 'user']);
+            // 2. Consulta Base con relaciones y selección de campos formateados
+            $query = EnvioWhatsapp::with(['detalles', 'user'])->select(
+                '*',
+                DB::raw("DATE_FORMAT(created_at, '%Y-%m-%d %T') AS fecha_creacion"),
+                DB::raw("DATE_FORMAT(updated_at, '%Y-%m-%d %T') AS fecha_edicion")
+            );
 
-        // 3. Total de registros (antes de filtrar)
-        $totalRecords = $query->count();
+            // 3. Total de registros (antes de filtrar)
+            $totalRecords = $query->count();
 
-        // 4. Búsqueda (Filtros)
-        // Importante: Usamos un grupo (closure) para que los 'OR' no rompan otras condiciones si las hubiera.
-        if (!empty($searchValue)) {
-            $query->where(function($q) use ($searchValue) {
-                $q->where('phone', 'like', '%' . $searchValue . '%')
-                ->orWhere('status', 'like', '%' . $searchValue . '%')
-                ->orWhere('message_id', 'like', '%' . $searchValue . '%')
-                ->orWhereHas('user', function($userQuery) use ($searchValue) {
-                    $userQuery->where('name', 'like', '%' . $searchValue . '%')
-                        ->orWhere('email', 'like', '%' . $searchValue . '%');
+            // -------------------------------------------------------------------
+            // 4. Aplicación de Filtros Dinámicos (incluyendo JSON Metadata)
+            // -------------------------------------------------------------------
+            
+            // Excluir parámetros que ya son de DataTables o de uso interno
+            $ignoredParams = ['draw', 'start', 'length', 'search', 'order', 'columns', '_'];
+
+            foreach ($request->query() as $key => $value) {
+                // Aplicar el filtro si el parámetro NO es uno ignorado y tiene valor
+                if (!in_array($key, $ignoredParams) && !is_null($value) && $value !== '') {
+                    
+                    // Filtrar por campos específicos de la tabla (ej: 'status=enviado')
+                    if (Schema::hasColumn('envios_whatsapp', $key)) {
+                        $query->where($key, $value);
+                    }
+                    
+                    // Filtrar para la metadata JSON (donde van 'id_nit', 'cliente_id', etc.)
+                    $query->whereJsonContains("filter_metadata->{$key}", $value);
+                }
+            }
+            
+            // -------------------------------------------------------------------
+
+            // 5. Búsqueda general de DataTables
+            if (!empty($searchValue)) {
+                $query->where(function($q) use ($searchValue) {
+                    $q->where('phone', 'like', '%' . $searchValue . '%')
+                    ->orWhere('status', 'like', '%' . $searchValue . '%')
+                    ->orWhere('message_id', 'like', '%' . $searchValue . '%');
                 });
-            });
+            }
+
+            // 6. Total de registros filtrados (para la paginación correcta)
+            $totalRecordwithFilter = $query->count();
+
+            // 7. Ordenamiento Dinámico
+            $validSortColumns = ['id', 'phone', 'status', 'created_at', 'updated_at'];
+            
+            if (in_array($columnName, $validSortColumns)) {
+                $query->orderBy($columnName, $columnSortOrder);
+            } else {
+                $query->orderBy('id', 'DESC'); 
+            }
+
+            // 8. Paginación y Obtención de datos
+            $records = $query->skip($start)
+                ->take($length)
+                ->get();
+
+            // 9. Respuesta JSON
+            return response()->json([
+                'success' => true,
+                'draw' => intval($draw),
+                'iTotalRecords' => $totalRecords, 
+                'iTotalDisplayRecords' => $totalRecordwithFilter, 
+                'data' => $records, 
+                'message' => 'Envíos de WhatsApp cargados con éxito!'
+            ]);
+        } catch (Exception $e) {
+            // Manejo de errores profesional
+            return response()->json([
+                "success" => false,
+                'data' => [],
+                "message" => "Ocurrió un error al procesar la solicitud: " . $e->getMessage()
+            ], 500); // Usamos 500 para errores internos inesperados
         }
+    }
 
-        // 5. Total de registros filtrados (para la paginación correcta)
-        $totalRecordwithFilter = $query->count();
+    public function detail(Request $request)
+    {
+        try {
+            // 1. Extracción de Parámetros DataTables
+            $draw = $request->get('draw');
+            $start = $request->get("start");
+            // Se usa $length para la paginación, si no está definido, usamos un valor sensato.
+            $length = $request->get("length", 20); 
+            
+            // ID del envío principal (parámetro esencial para este método)
+            $whatSappId = $request->get('id'); 
+            
+            // Parámetros de ordenamiento
+            $columnIndex_arr = $request->get('order');
+            $columnName_arr = $request->get('columns');
+            $order_arr = $request->get('order');
+            
+            // Determinación de la columna y el orden para la consulta
+            $columnIndex = $columnIndex_arr[0]['column'] ?? 0; 
+            $columnName = $columnName_arr[$columnIndex]['data'] ?? 'id'; 
+            $columnSortOrder = $order_arr[0]['dir'] ?? 'desc'; 
 
-        // 6. Ordenamiento Dinámico
-        // Verificamos si la columna es válida para ordenar directamente en SQL
-        $validSortColumns = ['id', 'phone', 'status', 'created_at', 'updated_at'];
-        
-        if (in_array($columnName, $validSortColumns)) {
-            $query->orderBy($columnName, $columnSortOrder);
-        } else {
-            // Por defecto si la columna no es ordenable (ej: una columna calculada o relación compleja)
-            $query->orderBy('id', 'DESC'); 
+            if (!$whatSappId) {
+                 return response()->json([
+                    'success' => false,
+                    'message' => 'El parámetro "id" del envío es obligatorio.',
+                ], 400);
+            }
+
+            // 2. Consulta Base y Filtro de Seguridad
+            $query = EnvioWhatsappDetalle::with('whatsapp')
+                // 2.1. Filtro por el ID del envío principal
+                ->where('id_whatsapp', $whatSappId);
+
+            // 3. Total de registros filtrados (antes de la paginación)
+            $totalRecordwithFilter = $query->count();
+            // Para el detalle, el total de registros es igual al total filtrado.
+            $totalRecords = $totalRecordwithFilter; 
+            
+            // 4. Ordenamiento Dinámico
+            // Define las columnas válidas para ordenar en la tabla EnvioEmailDetalle
+            $validSortColumns = ['id', 'created_at', 'updated_at', 'status_evento']; 
+            
+            if (in_array($columnName, $validSortColumns)) {
+                $query->orderBy($columnName, $columnSortOrder);
+            } else {
+                // Por defecto, ordena por la columna de creación de forma descendente.
+                $query->orderBy('created_at', 'DESC'); 
+            }
+
+            // 5. Selección de Columnas (incluyendo formato de fechas)
+            $query->select(
+                '*',
+                // Usamos la función de DB para formatear fechas
+                DB::raw("DATE_FORMAT(created_at, '%Y-%m-%d %T') AS fecha_creacion"),
+                DB::raw("DATE_FORMAT(updated_at, '%Y-%m-%d %T') AS fecha_edicion")
+            );
+
+            // 6. Paginación y Obtención de datos
+            $records = $query->skip($start)
+                ->take($length)
+                ->get();
+            
+            // 7. Respuesta JSON
+            return response()->json([
+                'success' => true,
+                'draw' => intval($draw),
+                'iTotalRecords' => $totalRecords, 
+                'iTotalDisplayRecords' => $totalRecordwithFilter, 
+                'data' => $records, 
+                'message' => 'Whatsapp detalle generado con éxito!'
+            ]);
+
+        } catch (Exception $e) {
+
+            return response()->json([
+                "success" => false,
+                'data' => [],
+                "message" => "Ocurrió un error al procesar la solicitud: " . $e->getMessage()
+            ], 500);
         }
-
-        // 7. Paginación y Obtención de datos
-        $records = $query->skip($start)
-            ->take($length)
-            ->get();
-
-        // 8. Respuesta JSON
-        return response()->json([
-            'success' => true,
-            'draw' => intval($draw),
-            'iTotalRecords' => $totalRecords,
-            'iTotalDisplayRecords' => $totalRecordwithFilter,
-            'data' => $records,
-            'message' => 'Envíos de WhatsApp cargados con éxito!'
-        ]);
     }
 
     public function webHook(Request $request)
@@ -234,6 +412,6 @@ class WhatsappController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Estado y detalle guardados correctamente'
-        ], 202);
+        ], 200);
     }
 }

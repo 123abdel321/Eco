@@ -7,11 +7,11 @@ use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
-    protected $connection = 'clientes';
+    protected $connection = 'eco';
     
     public function up(): void
     {
-        Schema::connection('clientes')->create('configuracion_envios', function (Blueprint $table) {
+        Schema::connection('eco')->create('configuracion_envios', function (Blueprint $table) {
             $table->id();
             $table->enum('tipo', ['email', 'whatsapp'])->unique(); // Único por tipo
             $table->integer('limite_por_minuto')->default(20);
@@ -23,7 +23,7 @@ return new class extends Migration
         });
 
         // Insertar configuraciones por defecto
-        DB::connection('clientes')->table('configuracion_envios')->insert([
+        DB::connection('eco')->table('configuracion_envios')->insert([
             [
                 'tipo' => 'email',
                 'limite_por_minuto' => 20,

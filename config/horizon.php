@@ -45,6 +45,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Horizon Environment
+    |--------------------------------------------------------------------------
+    |
+    | This value determines the "environment" your Horizon is running in. 
+    | This should match the environment name in the environments array below.
+    |
+    */
+
+    'environment' => env('HORIZON_ENVIRONMENT', 'production'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Horizon Redis Prefix
     |--------------------------------------------------------------------------
     |
@@ -124,6 +136,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Dashboard Name
+    |--------------------------------------------------------------------------
+    |
+    | Customize the name displayed in the Horizon dashboard.
+    |
+    */
+
+    'dashboard' => [
+        'name' => env('APP_NAME', 'Eco') . ' Horizon Dashboard',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Metrics
     |--------------------------------------------------------------------------
     |
@@ -190,6 +215,7 @@ return [
                 'tries' => 1,
                 'timeout' => 120,
                 'nice' => 0,
+                'tag' => 'eco-whatsapp',
             ],
             'email' => [
                 'connection' => 'redis',
@@ -200,6 +226,7 @@ return [
                 'tries' => 1,
                 'timeout' => 120,
                 'nice' => 0,
+                'tag' => 'eco-email',
             ],
         ],
 
@@ -212,6 +239,7 @@ return [
                 'memory' => 128,
                 'tries' => 1,
                 'timeout' => 60,
+                'tag' => 'eco-local',
             ],
         ],
     ],

@@ -47,6 +47,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('email/list', 'list');
         Route::post('email/send', 'send');
         Route::get('email/detail', 'detail');
+        Route::get('email/webhook', 'webHook');
     });
     //CREDENCIALES
     Route::controller(CredencialController::class)->prefix('credenciales')->group(function () {

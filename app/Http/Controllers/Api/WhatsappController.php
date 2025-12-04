@@ -405,7 +405,7 @@ class WhatsappController extends Controller
         ]);
         
         // 4. Actualizar el estado del padre
-        if ($status) {
+        if ($status && $envio->status != 'fallido') {
             $envio->status = $status;
             $envio->save();
 

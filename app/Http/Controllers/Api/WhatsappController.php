@@ -105,7 +105,7 @@ class WhatsappController extends Controller
                 $request->parameters,
                 $envioWhatsapp->id,
                 $user->id 
-            );
+            )->onQueue('whatsapp');
             
             // --- 4. Respuesta de Éxito ---
 

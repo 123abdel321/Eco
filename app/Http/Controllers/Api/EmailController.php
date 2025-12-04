@@ -112,7 +112,7 @@ class EmailController extends Controller
                 $request->metadata ?? [],
                 $envioEmail->id,
                 $user->id
-            );
+            )->onQueue('email');
             
             // --- 4. Respuesta de Éxito ---
 

@@ -149,19 +149,10 @@ class SendSingleEmail implements ShouldQueue
             if ($response instanceof \Illuminate\Mail\SentMessage) {
                 // Caso 1: Laravel devuelve el objeto wrapper esperado
                 $messageId = $response->getSymfonySentMessage()?->getMessageId();
-                Log::info('Respuesta de Mailer: SentMessage de Laravel recibido.', ['message_id' => $messageId]);
-
             } elseif ($response instanceof SentMessage) {
                  // Caso 2: Laravel devuelve directamente el objeto de Symfony
                 $messageId = $response->getMessageId();
-                Log::info('Respuesta de Mailer: SentMessage de Symfony recibido.', ['message_id' => $messageId]);
-
             } elseif ($response === 1 || $response === 0 || $response === true) {
-                // Caso 3 (TU CASO): El envío SMTP fue exitoso, pero el objeto no se recuperó (devuelve 0 o 1).
-                Log::info('Respuesta de Mailer: Respuesta numérica o booleana, asumiendo éxito.', [
-                    'response_type' => gettype($response),
-                    'response_value' => $response,
-                ]);
                 // Generamos un ID local temporal para el registro.
                 $messageId = 'SUCCESS_SENT_LOCAL-' . uniqid(); 
             } else {

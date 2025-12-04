@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use DB;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
@@ -170,6 +171,7 @@ class EmailController extends Controller
     }
 
     public function list(Request $request)
+
     {
         // 1. Parámetros de DataTables
         $draw = $request->get('draw');

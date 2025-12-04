@@ -397,8 +397,10 @@ class WhatsappController extends Controller
         }
         
         // 4. Actualizar el estado del padre
-        $envio->status = $status;
-        $envio->save();
+        if ($status) {
+            $envio->status = $status;
+            $envio->save();
+        }
 
         // 5. Crear el registro en la tabla DETALLE
         try {

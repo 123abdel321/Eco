@@ -196,7 +196,18 @@ class WhatsappController extends Controller
             // -------------------------------------------------------------------
             
             // Excluir parámetros que ya son de DataTables o de uso interno
-            $ignoredParams = ['draw', 'start', 'length', 'search', 'order', 'columns', '_'];
+            $ignoredParams = ['draw', 'start', 'length', 'search', 'order', 'columns', '_', 'fecha_desde', 'fecha_hasta'];
+            
+            $fechaDesde = $request->query('fecha_desde');
+            $fechaHasta = $request->query('fecha_hasta');
+
+            if (!empty($fechaDesde)) {
+                $query->where('created_at', '>=', $fechaDesde . ' 00:00:00');
+            }
+
+            if (!empty($fechaHasta)) {
+                $query->where('created_at', '<=', $fechaHasta . ' 23:59:59');
+            }
 
             foreach ($request->query() as $key => $value) {
                 // Aplicar el filtro si el parámetro NO es uno ignorado y tiene valor

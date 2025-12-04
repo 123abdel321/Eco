@@ -208,7 +208,7 @@ return [
         'production' => [
             'whatsapp' => [
                 'connection' => 'redis',
-                'queue' => ['default'],
+                'queue' => ['whatsapp'],
                 'balance' => 'auto',
                 'maxProcesses' => 1,
                 'memory' => 128,
@@ -219,7 +219,7 @@ return [
             ],
             'email' => [
                 'connection' => 'redis',
-                'queue' => ['default'],
+                'queue' => ['email'],
                 'balance' => 'auto',
                 'maxProcesses' => 1,
                 'memory' => 128,

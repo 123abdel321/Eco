@@ -24,6 +24,9 @@ use App\Http\Controllers\Api\CredencialController;
 Route::controller(WhatsappController::class)->group(function () {
     Route::post('whatsapp/webhook', 'webHook');
 });
+Route::controller(EmailController::class)->group(function () {
+    Route::post('email/webhook', 'webHook');
+});
 //AUTH 
 Route::controller(AuthController::class)->group(function () {
     Route::post('login', 'login');
@@ -47,7 +50,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('email/list', 'list');
         Route::post('email/send', 'send');
         Route::get('email/detail', 'detail');
-        Route::post('email/webhook', 'webHook');
     });
     //CREDENCIALES
     Route::controller(CredencialController::class)->prefix('credenciales')->group(function () {

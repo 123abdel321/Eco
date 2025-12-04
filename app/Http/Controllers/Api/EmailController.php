@@ -171,7 +171,6 @@ class EmailController extends Controller
     }
 
     public function list(Request $request)
-
     {
         // 1. Parámetros de DataTables
         $draw = $request->get('draw');
@@ -343,7 +342,7 @@ class EmailController extends Controller
         foreach ($events as $event) {
             try {
                 // 1. Extracción y limpieza de datos del evento
-                $sgMessageId = $event['message_id'] ?? null;
+                $sgMessageId = $event['sg_message_id'] ?? null;
                 $sgEventId = $event['sg_event_id'] ?? null;
                 $smtpId = $event['smtp-id'] ?? null;
                 // El smtp-id puede venir con <>

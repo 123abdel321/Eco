@@ -36,6 +36,7 @@ class EnvioEmail extends Model
     const STATUS_ENTREGADO = 'entregado';
     const STATUS_LEIDO = 'leido';
     const STATUS_FALLIDO = 'fallido';
+    const STATUS_DIFERIDO = 'diferido';
 
     // Relación con el usuario (en la conexión clientes)
     public function user()

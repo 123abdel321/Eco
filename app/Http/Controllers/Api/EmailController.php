@@ -413,6 +413,10 @@ class EmailController extends Controller
                     } elseif (in_array($eventType, ["bounce", "dropped", "spamreport", "blocked"])) {
                         // El correo rebotó, fue eliminado o reportado como spam (falla final)
                         $newStatus = EnvioEmail::STATUS_FALLIDO;
+                    } elseif ($eventType === "processed"){
+                        $newStatus = EnvioEmail::STATUS_ENTREGADO;
+                    } elseif ($eventType === "deferred") {
+                        $newStatus = EnvioEmail::STATUS_DIFERIDO;
                     }
 
                     Log::info([

@@ -181,12 +181,16 @@ class WhatsappController extends Controller
             $columnName = $columnName_arr[$columnIndex]['data'] ?? 'id'; 
             $columnSortOrder = $order_arr[0]['dir'] ?? 'desc'; 
 
+            $userId = $request->user()->id;
+
             // 2. Consulta Base con relaciones y selección de campos formateados
-            $query = EnvioWhatsapp::with(['detalles', 'user'])->select(
-                '*',
-                DB::raw("DATE_FORMAT(created_at, '%Y-%m-%d %T') AS fecha_creacion"),
-                DB::raw("DATE_FORMAT(updated_at, '%Y-%m-%d %T') AS fecha_edicion")
-            )->where('user_id', request()->user()->id);
+            $query = EnvioWhatsapp::with(['detalles', 'user'])
+                ->select(
+                    '*',
+                    DB::raw("DATE_FORMAT(created_at, '%Y-%m-%d %T') AS fecha_creacion"),
+                    DB::raw("DATE_FORMAT(updated_at, '%Y-%m-%d %T') AS fecha_edicion")
+                )
+                ->where('user_id', $userId);
 
             // 3. Total de registros (antes de filtrar)
             $totalRecords = $query->count();

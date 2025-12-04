@@ -368,11 +368,19 @@ class EmailController extends Controller
 
                 // 3. Buscar el registro de EnvioEmail
                 $envio = null;
-                Log::error(['trackingId' => $trackingId]);
+                Log::error([
+                    'trackingId' => $trackingId,
+                    'smtpId' => $smtpId
+                ]);
+
                 if ($trackingId) {
                     $envio = EnvioEmail::where('message_id', 'LIKE', $trackingId . '%')
                         ->orWhere('message_id', $trackingId)
                         ->first();
+                }
+
+                if (!$envio) {
+                    $envio = EnvioEmail::where('message_id', $smtpId)->first();
                 }
                 
                 // 4. Si se encuentra el registro, actualizar estado y registrar detalle

@@ -410,9 +410,7 @@ class EmailController extends Controller
                         'id_email' => $envio->id,
                         'email' => $email,
                         'event' => $eventType,
-                        'sg_event_id' => $sgEventId,
-                        'message_id' => $sgMessageId,
-                        'smtp_id' => $smtpId,
+                        'message_id' => $trackingId,
                         'timestamp' => $timestamp,
                         'campos_adicionales' => $event, // Guardar el evento completo para referencia
                     ]);

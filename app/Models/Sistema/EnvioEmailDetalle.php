@@ -17,14 +17,12 @@ class EnvioEmailDetalle extends Model
         'id_email',
         'email',
         'event',
-        'ip',
+        'message_id',
         'response',
-        'sg_event_id',
-        'sg_message_id',
-        'smtp_id',
         'timestamp',
-        'tls',
-        'campos_adicionales', // Nuevo campo JSON
+        'error_code',
+        'error_message',
+        'campos_adicionales'
     ];
 
     protected $casts = [

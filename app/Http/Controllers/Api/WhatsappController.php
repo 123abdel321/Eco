@@ -84,10 +84,10 @@ class WhatsappController extends Controller
                     'id_whatsapp' => $envioWhatsapp->id,
                     'phone' => $request->phone ?? 'validation_error',
                     'event' => 'Error API (Validación)',
-                    'response' => ['errors' => $errorMessages],
+                    'response' => json_encode(['errors' => $errorMessages]),
                     'error_message' => 'Fallo de validación en la solicitud: ' . $fullErrorMessage,
                     'timestamp' => now(),
-                    'campos_adicionales' => ['request_data' => $request->all()],
+                    'campos_adicionales' => json_encode(['request_data' => $request->all()]),
                 ]);
                 
                 // Devolver la respuesta de error de validación (422)

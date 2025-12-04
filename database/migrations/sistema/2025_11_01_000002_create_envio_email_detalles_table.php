@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::connection('eco')->create('envio_email_detalles', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('id_email');
-            $table->string('phone');
+            $table->string('email');
             $table->string('event');
             $table->string('message_id')->nullable();
             $table->text('response')->nullable();
@@ -25,7 +25,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->foreign('id_email')->references('id')->on('envios_email')->onDelete('cascade');
-            $table->index(['phone']);
+            $table->index(['email']);
             $table->index(['event']);
             $table->index(['message_id']);
             $table->index(['timestamp']);

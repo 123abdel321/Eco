@@ -88,10 +88,10 @@ class EmailController extends Controller
                     'id_email' => $envioEmail->id, // Asumo que la columna de enlace es 'id_email'
                     'email' => $request->email ?? 'validation_error',
                     'event' => 'Error API (Validación)',
-                    'response' => ['errors' => $errorMessages],
+                    'response' => json_encode(['errors' => $errorMessages]),
                     'error_message' => 'Fallo de validación en la solicitud: ' . $fullErrorMessage,
                     'timestamp' => now(),
-                    'campos_adicionales' => ['request_data' => $request->all()],
+                    'campos_adicionales' => json_encode(['request_data' => $request->all()]),
                 ]);
                 
                 // Devolver la respuesta de error de validación (422)
@@ -152,14 +152,14 @@ class EmailController extends Controller
                     'id_email' => $envioEmail->id,
                     'email' => $request->email ?? 'fatal_error',
                     'event' => 'Error API (Fatal)',
-                    'response' => ['error_interno' => $errorMessage],
+                    'response' => json_encode(['error_interno' => $errorMessage]),
                     'error_message' => 'Fallo interno. El envío no pudo ser procesado.',
                     'timestamp' => now(),
-                    'campos_adicionales' => [
+                    'campos_adicionales' => json_encode([
                         'exception_class' => get_class($e),
                         'line' => $e->getLine(),
                         'request_data' => $request->all(),
-                    ],
+                    ]),
                 ]);
             }
 

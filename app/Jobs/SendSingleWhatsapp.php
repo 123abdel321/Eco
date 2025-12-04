@@ -87,10 +87,6 @@ class SendSingleWhatsapp implements ShouldQueue
 
             $result = $whatsapp->send();
 
-            Log::error('SendSingleWhatsapp response', [
-                'response' => json_encode($result->response)
-            ]);
-
             // 6. Actualizar el registro
             if ($result->status == 200 && isset($result->response->sid)) {
                 $envioWhatsapp->status = 'enviado';

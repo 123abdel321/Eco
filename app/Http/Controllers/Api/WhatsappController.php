@@ -362,6 +362,8 @@ class WhatsappController extends Controller
         // 1. Obtener el ID del mensaje del proveedor
         $messageSid = $request->input('MessageSid');
         $statusRaw = $request->input('SmsStatus') ?? $request->input('MessageStatus');
+        $MessageStatus1 = $request->input('MessageStatus');
+        $SmsStatus1 = $request->input('SmsStatus');
 
         // 2. Buscar el envío padre
         $envio = EnvioWhatsapp::where('message_id', $messageSid)->first();
@@ -395,11 +397,18 @@ class WhatsappController extends Controller
                 $status = $statusRaw;
                 break;
         }
+
+        Log::info([
+            "estado" => $status,
+            "MessageStatus1" => $MessageStatus1,
+            "SmsStatus1" => $SmsStatus1
+        ]);
         
         // 4. Actualizar el estado del padre
         if ($status) {
             $envio->status = $status;
             $envio->save();
+
         }
 
         // 5. Crear el registro en la tabla DETALLE

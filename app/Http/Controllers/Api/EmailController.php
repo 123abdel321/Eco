@@ -337,7 +337,7 @@ class EmailController extends Controller
     public function webHook(Request $request)
     {
         $events = json_decode($request->getContent(), true) ?? [];
-
+        Log::error($events);
         foreach ($events as $event) {
             try {
                 // 1. Extracción y limpieza de datos del evento

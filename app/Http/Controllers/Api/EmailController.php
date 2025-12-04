@@ -187,13 +187,13 @@ class EmailController extends Controller
         $columnIndex = $columnIndex_arr[0]['column'] ?? 0; 
         $columnName = $columnName_arr[$columnIndex]['data'] ?? 'id'; 
         $columnSortOrder = $order_arr[0]['dir'] ?? 'desc'; 
-
+        
         // 2. Consulta Base
         $query = EnvioEmail::with(['detalles', 'user'])->select(
             '*',
             DB::raw("DATE_FORMAT(created_at, '%Y-%m-%d %T') AS fecha_creacion"),
             DB::raw("DATE_FORMAT(updated_at, '%Y-%m-%d %T') AS fecha_edicion")
-        );
+        )->where('user_id', request()->user()->id);
 
         // 3. Total de registros (antes de filtrar)
         $totalRecords = $query->count();

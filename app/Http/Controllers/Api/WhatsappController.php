@@ -186,7 +186,7 @@ class WhatsappController extends Controller
                 '*',
                 DB::raw("DATE_FORMAT(created_at, '%Y-%m-%d %T') AS fecha_creacion"),
                 DB::raw("DATE_FORMAT(updated_at, '%Y-%m-%d %T') AS fecha_edicion")
-            );
+            )->where('user_id', request()->user()->id);
 
             // 3. Total de registros (antes de filtrar)
             $totalRecords = $query->count();

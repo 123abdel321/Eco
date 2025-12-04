@@ -415,6 +415,11 @@ class EmailController extends Controller
                         $newStatus = EnvioEmail::STATUS_FALLIDO;
                     }
 
+                    Log::info([
+                        "newStatus" => $newStatus,
+                        "eventType" => $eventType
+                    ]);
+
                     if ($newStatus) {
                         $envio->status = $newStatus;
                         $envio->message_id = $sgMessageId; 

@@ -369,7 +369,7 @@ class EmailController extends Controller
 
                 // 3. Buscar el registro de EnvioEmail
                 $envio = null;
-
+                Log::error(['trackingId' => $trackingId]);
                 if ($trackingId) {
                     $envio = EnvioEmail::where('message_id', 'LIKE', $trackingId . '%')
                         ->orWhere('message_id', $trackingId)

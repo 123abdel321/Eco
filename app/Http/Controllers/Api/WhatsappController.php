@@ -391,7 +391,7 @@ class WhatsappController extends Controller
                 break;
             case 'failed':
             case 'undelivered':
-                $status = 'rechazado';
+                $status = 'fallido';
                 break;
             default:
                 $status = $statusRaw;

@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('message_id')->nullable();
             $table->string('phone');
             $table->string('contexto')->nullable();
-            $table->enum('status', ['en_cola', 'enviado', 'entregado', 'leido', 'fallido'])->default('en_cola');
+            $table->enum('status', ['en_cola', 'enviado', 'entregado', 'abierto', 'leido', 'fallido'])->default('en_cola');
             $table->json('campos_adicionales')->nullable();
             $table->json('filter_metadata')->nullable()->comment('Metadatos para indexación y filtrado rápido, ej: {"cliente_id": 1}');
             $table->timestamps();

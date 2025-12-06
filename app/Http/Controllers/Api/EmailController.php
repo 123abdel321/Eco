@@ -354,7 +354,7 @@ class EmailController extends Controller
     public function webHook(Request $request)
     {
         $events = json_decode($request->getContent(), true) ?? [];
-        Log::error($events);
+        
         foreach ($events as $event) {
             try {
                 // 1. Extracción y limpieza de datos del evento
@@ -384,10 +384,6 @@ class EmailController extends Controller
 
                 // 3. Buscar el registro de EnvioEmail
                 $envio = null;
-                Log::error([
-                    'trackingId' => $trackingId,
-                    'smtpId' => $smtpId
-                ]);
 
                 if ($trackingId) {
                     $envio = EnvioEmail::where('message_id', 'LIKE', $trackingId . '%')
@@ -418,11 +414,6 @@ class EmailController extends Controller
                     } elseif ($eventType === "deferred") {
                         $newStatus = EnvioEmail::STATUS_DIFERIDO;
                     }
-
-                    Log::info([
-                        "newStatus" => $newStatus,
-                        "eventType" => $eventType
-                    ]);
 
                     if ($newStatus) {
                         $envio->status = $newStatus;

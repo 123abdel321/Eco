@@ -369,50 +369,47 @@ class WhatsappController extends Controller
         $envio = EnvioWhatsapp::where('message_id', $messageSid)->first();
 
         if (!$envio) {
-            Log::error("Webhook WhatsApp: No se encontró envío relacionado con SID: $messageSid");
+            Log::error("Webhook WhatsApp: No se encontró envío relacionado con SID: $messageSid", [
+                "SmsStatus1" => $SmsStatus1,
+                "MessageStatus1" => $MessageStatus1
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Envio no encontrado'
             ], 404);
         }
 
-        // 3. Mapeo de estados
-        $status = 'pendiente';
-
-        switch ($statusRaw) {
-            case 'sent':
-                $status = 'enviado';
-                break;
-            case 'delivered':
-                $status = 'entregado';
-                break;
-            case 'read':
-                $status = 'abierto';
-                break;
-            case 'failed':
-            case 'undelivered':
-                $status = 'fallido';
-                break;
-            default:
-                $status = $statusRaw;
-                break;
-        }
-
-        Log::info([
-            "estado" => $status,
-            "MessageStatus1" => $MessageStatus1,
-            "SmsStatus1" => $SmsStatus1
-        ]);
-        
-        // 4. Actualizar el estado del padre
-        if ($status && $envio->status != 'fallido') {
-            $envio->status = $status;
-            $envio->save();
-
-        }
-
-        // 5. Crear el registro en la tabla DETALLE
         try {
+
+            // 3. Mapeo de estados
+            $status = 'pendiente';
+
+            switch ($statusRaw) {
+                case 'sent':
+                    $status = 'enviado';
+                    break;
+                case 'delivered':
+                    $status = 'entregado';
+                    break;
+                case 'read':
+                    $status = 'abierto';
+                    break;
+                case 'failed':
+                case 'undelivered':
+                    $status = 'fallido';
+                    break;
+                default:
+                    $status = $statusRaw;
+                    break;
+            }
+
+            // 4. Actualizar el estado del padre
+            if ($status && $envio->status != 'fallido') {
+                $envio->status = $status;
+                $envio->save();
+            }
+            
+            // 5. Crear el registro en la tabla DETALLE
             EnvioWhatsappDetalle::create([
                 'id_whatsapp'        => $envio->id,
                 'phone'              => $request->input('To'), // El número destino
@@ -428,8 +425,14 @@ class WhatsappController extends Controller
                     'raw_status'  => $statusRaw
                 ]
             ]);
+
         } catch (\Exception $e) {
-            Log::error("Error guardando detalle Whatsapp: " . $e->getMessage());
+
+            Log::error("Error guardando detalle Whatsapp: " . $e->getMessage(), [
+                "estado" => $status,
+                "MessageStatus1" => $MessageStatus1
+            ]);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Estado actualizado, pero fallo al guardar detalle'

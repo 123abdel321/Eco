@@ -33,7 +33,7 @@ class SendSingleEmail implements ShouldQueue
         public string $aplicacion,
         public string $email,
         public string $asunto,
-        public ?string $from_name = null,
+        public string $from_name,
         public string $html,
         public array $archivos = [],
         public array $metadata = [],
@@ -102,6 +102,7 @@ class SendSingleEmail implements ShouldQueue
                 'driver_usado' => $driver,
                 'from_address' => $fromAddress,
                 'from_name' => $fromName,
+                'aca' => true,
                 'destinatario' => $this->email,
             ]);
 

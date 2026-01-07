@@ -110,7 +110,7 @@ class EmailController extends Controller
                 $request->aplicacion,
                 $request->email,
                 $request->asunto,
-                $request->from_name,
+                $request->from_name ?? 'Portafolio ERP',
                 $request->html,
                 $request->archivos ?? [],
                 $request->metadata ?? [],

@@ -33,6 +33,7 @@ class SendSingleEmail implements ShouldQueue
         public string $aplicacion,
         public string $email,
         public string $asunto,
+        public ?string $from_name = null,
         public string $html,
         public array $archivos = [],
         public array $metadata = [],
@@ -55,7 +56,7 @@ class SendSingleEmail implements ShouldQueue
             $this->actualizarEstadoEnvio(EnvioEmail::STATUS_FALLIDO, 'Configuración global de envío inactiva.');
             return;
         }
-
+        
         try {
             // 1. Verificar rate limiting GLOBAL para Email
             if (!RateLimitingHelper::puedeEnviar(
@@ -93,6 +94,9 @@ class SendSingleEmail implements ShouldQueue
                 'Configuración de remitente NO ENCONTRADA';
 
             $fromName = $finalConfig['from']['name'] ?? 'N/A';
+            if ($this->from_name) {
+                $fromName = $this->from_name;
+            }            
 
             Log::info('Remitente Final Configurado', [
                 'driver_usado' => $driver,
@@ -142,7 +146,7 @@ class SendSingleEmail implements ShouldQueue
 
             // 6. Enviar con el driver configurado
             $response = Mail::mailer($driver)->to($this->email)->send($email);
-
+            
             // 7. Actualizar estado y obtener Message ID (AJUSTE CRÍTICO DE TIPO APLICADO AQUÍ)
             $messageId = null;
             

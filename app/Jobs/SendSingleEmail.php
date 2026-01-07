@@ -102,7 +102,6 @@ class SendSingleEmail implements ShouldQueue
                 'driver_usado' => $driver,
                 'from_address' => $fromAddress,
                 'from_name' => $fromName,
-                'aca' => true,
                 'destinatario' => $this->email,
             ]);
 

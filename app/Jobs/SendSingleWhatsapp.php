@@ -153,12 +153,6 @@ class SendSingleWhatsapp implements ShouldQueue
         // Obtener credenciales desencriptadas
         $creds = $credencial->credenciales_desencriptadas;
 
-        Log::info('Usando credenciales del usuario', [
-            'user_id' => $this->userId,
-            'credencial_id' => $credencial->id,
-            'envio_id' => $this->envioWhatsappId
-        ]);
-
         return [
             'account_sid' => $creds['account_sid'] ?? null,
             'auth_token' => $creds['auth_token'] ?? null,

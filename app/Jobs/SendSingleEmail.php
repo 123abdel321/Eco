@@ -96,15 +96,8 @@ class SendSingleEmail implements ShouldQueue
             $fromName = $finalConfig['from']['name'] ?? 'N/A';
             if ($this->from_name) {
                 $fromName = $this->from_name;
-            }            
-
-            Log::info('Remitente Final Configurado', [
-                'driver_usado' => $driver,
-                'from_address' => $fromAddress,
-                'from_name' => $fromName,
-                'destinatario' => $this->email,
-            ]);
-
+            }
+            
             // 5. Crear la clase Mailable ANÓNIMA
             $email = new class($this->aplicacion, $this->email, $this->asunto, $this->html, $this->archivos) extends Mailable {
                 
@@ -252,12 +245,6 @@ class SendSingleEmail implements ShouldQueue
             );
             $envioEmail->save();
         }
-
-        Log::info('Usando credenciales de Email personalizadas', [
-            'user_id' => $this->userId,
-            'credencial_id' => $credencial->id,
-            'driver' => $driverName
-        ]);
         
         return $driverName;
     }

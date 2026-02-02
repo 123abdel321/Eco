@@ -212,8 +212,9 @@ class EmailController extends Controller
         
         // --- 4. Filtro Dinámico en JSON (filter_metadata) ---
         // Excluir parámetros que ya son de DataTables o de uso interno
-        $ignoredParams = ['draw', 'start', 'length', 'search', 'order', 'columns', '_', 'fecha_desde', 'fecha_hasta'];
+        $ignoredParams = ['draw', 'start', 'length', 'search', 'order', 'columns', '_', 'fecha_desde', 'fecha_hasta', 'email'];
             
+        $email = $request->query('email');
         $fechaDesde = $request->query('fecha_desde');
         $fechaHasta = $request->query('fecha_hasta');
 
@@ -223,6 +224,10 @@ class EmailController extends Controller
 
         if (!empty($fechaHasta)) {
             $query->where('created_at', '<=', $fechaHasta . ' 23:59:59');
+        }
+
+        if (!empty($email)) {
+            $query->where('email', 'like', '%' . $email . '%');
         }
 
         foreach ($request->query() as $key => $value) {

@@ -49,7 +49,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // EMAIL
     Route::controller(EmailController::class)->group(function () {
         Route::post('email/list', 'list');
-        Route::get('whatsapp/list', 'list');
+        Route::get('email/list', 'list');
         Route::post('email/send', 'send');
         Route::get('email/detail', 'detail');
     });

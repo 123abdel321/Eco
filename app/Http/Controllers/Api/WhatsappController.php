@@ -217,15 +217,16 @@ class WhatsappController extends Controller
                 // Aplicar el filtro si el parámetro NO es uno ignorado y tiene valor
                 if (!in_array($key, $ignoredParams) && !is_null($value) && $value !== '') {
                     
-                    // Filtrar por campos específicos de la tabla (ej: 'status=enviado')
+                    // Verificar si es un campo normal de la tabla
                     if (Schema::hasColumn('envios_whatsapp', $key)) {
                         $query->where($key, $value);
+                    } 
+                    // Si no es columna normal, asumimos que es filtro de metadata JSON
+                    else {
+                        $query->whereJsonContains('filter_metadata->' . $key, $value);
                     }
-                    
-                    // Filtrar para la metadata JSON (donde van 'id_nit', 'cliente_id', etc.)
-                    $query->whereJsonContains("filter_metadata->{$key}", $value);
                 }
-            }
+        }
             
             // -------------------------------------------------------------------
 

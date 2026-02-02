@@ -41,13 +41,15 @@ Route::middleware('auth:sanctum')->group(function () {
     });
     //WHATSAPP
     Route::controller(WhatsappController::class)->group(function () {
+        Route::post('whatsapp/list', 'list');
         Route::get('whatsapp/list', 'list');
         Route::post('whatsapp/send', 'send');
         Route::get('whatsapp/detail', 'detail');
     });
     // EMAIL
     Route::controller(EmailController::class)->group(function () {
-        Route::get('email/list', 'list');
+        Route::post('email/list', 'list');
+        Route::get('whatsapp/list', 'list');
         Route::post('email/send', 'send');
         Route::get('email/detail', 'detail');
     });

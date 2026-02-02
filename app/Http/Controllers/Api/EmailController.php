@@ -196,6 +196,12 @@ class EmailController extends Controller
         $query = EnvioEmail::with(['detalles', 'user'])
             ->select(
                 '*',
+                'user_id',
+                'message_id',
+                'email',
+                'contexto',
+                'status',
+                'filter_metadata',
                 DB::raw("DATE_FORMAT(created_at, '%Y-%m-%d %T') AS fecha_creacion"),
                 DB::raw("DATE_FORMAT(updated_at, '%Y-%m-%d %T') AS fecha_edicion")
             )

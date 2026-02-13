@@ -11,6 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use App\Helpers\WhatsApp\SendTwilioWhatsApp;
+use Illuminate\Queue\Middleware\RateLimited;
 //MODELS
 use App\Models\CredencialEnvio;
 use App\Models\Sistema\EnvioWhatsapp;
@@ -21,9 +22,9 @@ class SendSingleWhatsapp implements ShouldQueue
 {
     use Batchable, Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $tries = 3;
-    public $timeout = 60;
-    public $maxExceptions = 1;
+    public $tries = 20;
+    public $timeout = 300;
+    public $maxExceptions = 3;
 
     public function __construct(
         public string $to,
@@ -32,6 +33,13 @@ class SendSingleWhatsapp implements ShouldQueue
         public int $envioWhatsappId,
         public ?int $userId = null // Nuevo parámetro
     ) {}
+
+    public function middleware()
+    {
+        return [
+            new RateLimited('whatsapp'),
+        ];
+    }
 
     public function handle()
     {
@@ -55,10 +63,10 @@ class SendSingleWhatsapp implements ShouldQueue
                 $config->limite_por_hora,
                 $config->limite_por_dia
             )) {
-                Log::warning('Límite de rate de WhatsApp alcanzado. Reintentando envio en 10 segundos.', [
+                Log::warning('Límite de rate de WhatsApp alcanzado. Reintentando envio en 60 segundos.', [
                     'envio_id' => $this->envioWhatsappId
                 ]);
-                $this->release(10);
+                $this->release(60);
                 return;
             }
 

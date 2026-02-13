@@ -14,6 +14,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Symfony\Component\Mailer\SentMessage;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\Middleware\RateLimited;
 //MODELS
 use App\Models\CredencialEnvio;
 use App\Models\Sistema\EnvioEmail;
@@ -25,9 +26,9 @@ class SendSingleEmail implements ShouldQueue
 {
     use Batchable, Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $tries = 3;
+    public $tries = 20;
     public $timeout = 300;
-    public $maxExceptions = 1;
+    public $maxExceptions = 3;
 
     public function __construct(
         public string $aplicacion,
@@ -40,6 +41,13 @@ class SendSingleEmail implements ShouldQueue
         public int $envioEmailId,
         public ?int $userId = null
     ) {}
+
+    public function middleware()
+    {
+        return [
+            new RateLimited('email'),
+        ];
+    }
 
     public function handle()
     {
@@ -68,7 +76,7 @@ class SendSingleEmail implements ShouldQueue
                 Log::warning('Límite de rate de Email alcanzado. Reintentando Job en 60 segundos.', [
                     'envio_id' => $this->envioEmailId
                 ]);
-                $this->release(10);
+                $this->release(60);
                 return;
             }
 

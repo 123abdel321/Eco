@@ -30,6 +30,7 @@ class SendSingleWhatsapp implements ShouldQueue
         public string $to,
         public string $contentSid,
         public array $parameters,
+        public ?string $mediaUrl,
         public int $envioWhatsappId,
         public ?int $userId = null // Nuevo parámetro
     ) {}
@@ -84,12 +85,12 @@ class SendSingleWhatsapp implements ShouldQueue
 
             // 4. Obtener credenciales (del usuario o null para usar sistema)
             $credenciales = $this->obtenerCredenciales();
-
             // 5. Enviar WhatsApp (con o sin credenciales)
             $whatsapp = new SendTwilioWhatsApp(
                 $this->contentSid,
                 $this->to,
                 $this->parameters,
+                $this->mediaUrl,
                 $credenciales // null o array con credenciales
             );
 

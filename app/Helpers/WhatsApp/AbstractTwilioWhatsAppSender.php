@@ -30,7 +30,6 @@ abstract class AbstractTwilioWhatsAppSender
         $token = $credenciales['auth_token'] ?? config('services.twilio.auth_token');
 
         $twilio = new Client($sid, $token);
-        
         try {
             
             $message = $twilio->messages->create(

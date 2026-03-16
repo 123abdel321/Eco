@@ -8,14 +8,16 @@ class SendTwilioWhatsApp extends AbstractTwilioWhatsAppSender
     private $contentSid;
     private $parameters;
     private $from;
-    private $credenciales; // ✅ Nuevo
+    private $mediaUrl;
+    private $credenciales;
 
-    public function __construct(String $contentSid, String $to, Array $parameters = [], ?array $credenciales = null)
+    public function __construct(String $contentSid, String $to, Array $parameters = [], ?String $mediaUrl, ?array $credenciales = null)
     {
         $this->contentSid = $contentSid;
         $this->to = $to;
         $this->parameters = $parameters;
-        $this->credenciales = $credenciales; // ✅ Nuevo
+        $this->credenciales = $credenciales;
+        $this->mediaUrl = $mediaUrl;
         
         // ✅ Si hay credenciales, usar el 'from' de ahí, sino del config
         $this->from = $credenciales['from'] ?? config('services.twilio.phone_number');
@@ -39,6 +41,13 @@ class SendTwilioWhatsApp extends AbstractTwilioWhatsAppSender
     public function getFrom(): string
     {
         return 'whatsapp:' . $this->from;
+    }
+
+    public function getMediaUrl(): ?array
+    {
+        return [
+            $this->mediaUrl
+        ];
     }
 
     public function getMessagingServiceSid(): string

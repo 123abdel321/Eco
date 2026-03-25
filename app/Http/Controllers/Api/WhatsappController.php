@@ -24,11 +24,11 @@ class WhatsappController extends Controller
     public function send(Request $request)
     {
         $user = Auth::user();
-        $envioWhatsapp = null; // Inicializamos a null
+        $envioWhatsapp = null;
         $usaCredencialesPropias = false;
         $credencialUsuario = null;
         
-        // 1. Definición de la Validación (Mantenemos la definición de reglas)
+        // 1. Definición de la Validación
         $validator = Validator::make($request->all(), [
             'phone' => 'required|string|regex:/^57\d{10}$/', 
             'plantilla' => 'required|string|max:255', 
@@ -38,10 +38,29 @@ class WhatsappController extends Controller
             'aplicacion' => 'nullable|string|max:255',
         ]);
         
-        // El bloque try ahora incluye la lógica de validación para asegurar el registro
         try {
-            // --- 2. Pre-chequeo y Creación del Registro Principal (INTENTO) ---
-            // 2.1. Verificar credenciales antes de crear el registro
+            $duplicado = EnvioWhatsapp::where('user_id', $user->id)
+                ->where('phone', $request->phone)
+                ->where('contexto', $request->contexto ?? 'whatsapp.api_template')
+                ->where('created_at', '>=', now()->subHours(1))
+                ->whereJsonContains('campos_adicionales->raw_request', $request->all())
+                ->exists();
+            
+            if ($duplicado) {
+                Log::warning('Envío duplicado bloqueado', [
+                    'user_id' => $user->id,
+                    'phone' => $request->phone,
+                    'contexto' => $request->contexto
+                ]);
+                
+                return response()->json([
+                    "success" => false,
+                    "message" => "Ya existe un envío idéntico en proceso. Por favor espere 1 hora.",
+                    "duplicate" => true
+                ], 429);
+            }
+            
+            // 2. Verificar credenciales
             $credencialUsuario = CredencialEnvio::porUsuario($user->id)
                 ->porTipo(CredencialEnvio::TIPO_WHATSAPP)
                 ->activas()
@@ -54,31 +73,26 @@ class WhatsappController extends Controller
                 ->where('activo', 1)
                 ->first();
 
-            // 2.2. Crear el registro BASE en la tabla envios_whatsapp (Usamos valores seguros/placeholders)
+            // 3. Crear el registro
             $envioWhatsapp = EnvioWhatsapp::create([
                 'user_id' => $user->id,
-                // Usamos el operador coalescente para evitar fallos de DB si los campos requeridos faltan
                 'plantilla_id' => $template ? $template->content_sid : 'FALLO_VALIDACION', 
                 'phone' => $request->phone ?? 'FALLO_VALIDACION',
                 'contexto' => $request->contexto ?? 'whatsapp.api_template',
-                // Inicialmente en cola (se actualizará inmediatamente si falla la validación)
                 'status' => EnvioWhatsapp::STATUS_EN_COLA, 
-                // Guardamos la metadata para el filtro (ya validada como array)
                 'filter_metadata' => $request->filter_metadata ?? [], 
                 'campos_adicionales' => [
                     'parameters' => $request->parameters,
                     'aplicacion' => $request->aplicacion ?? 'api',
                     'usa_credenciales_propias' => $usaCredencialesPropias,
                     'credencial_id' => $credencialUsuario?->id,
-                    'raw_request' => $request->all(), // Guardamos el payload completo en campos_adicionales
+                    'raw_request' => $request->all(),
                 ]
             ]);
 
             if (!$template) {
-
                 $envioWhatsapp->update(['status' => EnvioWhatsapp::STATUS_FALLIDO]);
                 
-                // Crear un detalle de fallo inmediato (para ver qué falló)
                 EnvioWhatsappDetalle::create([
                     'id_whatsapp' => $envioWhatsapp->id,
                     'phone' => $request->phone ?? 'validation_error',
@@ -95,17 +109,13 @@ class WhatsappController extends Controller
                 ], 404);
             }
 
-            // 2.3. Evaluación de la Validación
+            // Validación de Laravel
             if ($validator->fails()) {
-                // Si la validación FALLA, registramos el fallo y terminamos el proceso.
-                
                 $errorMessages = $validator->errors()->all();
                 $fullErrorMessage = implode('; ', $errorMessages);
 
-                // Actualizar el estado del registro recién creado
                 $envioWhatsapp->update(['status' => EnvioWhatsapp::STATUS_FALLIDO]);
                 
-                // Crear un detalle de fallo inmediato (para ver qué falló)
                 EnvioWhatsappDetalle::create([
                     'id_whatsapp' => $envioWhatsapp->id,
                     'phone' => $request->phone ?? 'validation_error',
@@ -116,15 +126,15 @@ class WhatsappController extends Controller
                     'campos_adicionales' => json_encode(['request_data' => $request->all()]),
                 ]);
                 
-                // Devolver la respuesta de error de validación (422)
                 return response()->json([
                     "success" => false,
                     "message" => $validator->errors()
                 ], 422);
             }
+            
             $mediaUrl = $request->mediaUrl ?? null;
 
-            // --- 3. Despacho (Si la Validación es Exitosa) ---
+            // 4. Despachar el job
             SendSingleWhatsapp::dispatch(
                 $request->phone,
                 $template->content_sid,
@@ -134,8 +144,7 @@ class WhatsappController extends Controller
                 $user->id 
             )->onQueue('whatsapp');
             
-            // --- 4. Respuesta de Éxito ---
-
+            // 5. Respuesta
             $configWhatsapp = ConfiguracionEnvio::porTipo(ConfiguracionEnvio::TIPO_WHATSAPP)->first();
             
             return response()->json([
@@ -152,22 +161,15 @@ class WhatsappController extends Controller
             ], 202);
 
         } catch (\Exception $e) {
-            
-            // --- 5. Manejo de Fallos Imprevistos (Fallo de DB, u otro error fatal) ---
-
-            dd($e->getMessage(), $e->getLine());
             $errorMessage = "Error al intentar crear el envío o despachar el Job: " . $e->getMessage();
             Log::error('WhatsappController@send: Error fatal', [
                 'error' => $errorMessage,
                 'request' => $request->all(),
             ]);
 
-            // Si el registro se creó antes del fallo (protección)
             if ($envioWhatsapp) {
-                 // Actualizar el estado a FALLIDO
                 $envioWhatsapp->update(['status' => EnvioWhatsapp::STATUS_FALLIDO]);
                 
-                // Crear un detalle de fallo
                 EnvioWhatsappDetalle::create([
                     'id_whatsapp' => $envioWhatsapp->id,
                     'phone' => $request->phone ?? 'validation_error',
@@ -185,7 +187,7 @@ class WhatsappController extends Controller
 
             return response()->json([
                 "success" => false,
-                "message" => "Fallo interno del servidor. Contacte a soporte: " . $e->getMessage()
+                "message" => "Fallo interno del servidor: " . $e->getMessage()
             ], 500);
         }
     }

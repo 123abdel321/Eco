@@ -64,9 +64,6 @@ class SendSingleWhatsapp implements ShouldQueue
                 $config->limite_por_hora,
                 $config->limite_por_dia
             )) {
-                Log::warning('Límite de rate de WhatsApp alcanzado. Reintentando envio en 60 segundos.', [
-                    'envio_id' => $this->envioWhatsappId
-                ]);
                 $this->release(60);
                 return;
             }
@@ -95,6 +92,8 @@ class SendSingleWhatsapp implements ShouldQueue
             );
 
             $result = $whatsapp->send();
+
+            Log::error('Los del envio', $result);
 
             // 6. Actualizar el registro
             if ($result->status == 200 && isset($result->response->sid)) {

@@ -175,27 +175,22 @@ class EmailController extends Controller
 
     public function list(Request $request)
     {
-        // 1. Parámetros de DataTables
-        $draw = $request->get('draw');
-        $start = $request->get("start");
-        $length = $request->get("length", 20);
-        $searchValue = $request->get('search')['value'] ?? null;
-        
-        // Ordenamiento
-        $columnIndex_arr = $request->get('order');
-        $columnName_arr = $request->get('columns');
-        $order_arr = $request->get('order');
-        
-        $columnIndex = $columnIndex_arr[0]['column'] ?? 0; 
-        $columnName = $columnName_arr[$columnIndex]['data'] ?? 'id'; 
-        $columnSortOrder = $order_arr[0]['dir'] ?? 'desc'; 
+        // Parámetros DataTables
+        $draw = $request->input('draw');
+        $start = (int) $request->input('start', 0);
+        $length = (int) $request->input('length', 20);
+        $searchValue = $request->input('search.value');
+
+        $columnIndex = $request->input('order.0.column', 0);
+        $columnName = $request->input("columns.$columnIndex.data", 'created_at');
+        $columnSortOrder = $request->input('order.0.dir', 'desc');
 
         $userId = $request->user()->id;
-        
-        // 2. Consulta Base
-        $query = EnvioEmail::with(['detalles', 'user'])
-            ->select(
-                '*',
+
+        // Consulta base
+        $query = EnvioEmail::with('detalles')
+            ->select([
+                'id',
                 'user_id',
                 'message_id',
                 'email',
@@ -203,81 +198,95 @@ class EmailController extends Controller
                 'status',
                 'filter_metadata',
                 DB::raw("DATE_FORMAT(created_at, '%Y-%m-%d %T') AS fecha_creacion"),
-                DB::raw("DATE_FORMAT(updated_at, '%Y-%m-%d %T') AS fecha_edicion")
-            )
+                DB::raw("DATE_FORMAT(updated_at, '%Y-%m-%d %T') AS fecha_edicion"),
+            ])
             ->where('user_id', $userId);
 
-        // 3. Total de registros (antes de filtrar)
-        $totalRecords = $query->count();
-        
-        // --- 4. Filtro Dinámico en JSON (filter_metadata) ---
-        // Excluir parámetros que ya son de DataTables o de uso interno
-        $ignoredParams = ['draw', 'start', 'length', 'search', 'order', 'columns', '_', 'fecha_desde', 'fecha_hasta', 'email'];
-            
-        $email = $request->query('email');
-        $fechaDesde = $request->query('fecha_desde');
-        $fechaHasta = $request->query('fecha_hasta');
+        // Total sin filtros
+        $totalRecords = (clone $query)->count();
 
-        if (!empty($fechaDesde)) {
-            $query->where('created_at', '>=', $fechaDesde . ' 00:00:00');
+        // Parámetros ignorados
+        $ignoredParams = [
+            'draw',
+            'start',
+            'length',
+            'search',
+            'order',
+            'columns',
+            '_',
+            'fecha_desde',
+            'fecha_hasta',
+            'email'
+        ];
+
+        // Filtros normales
+        if ($request->filled('fecha_desde')) {
+            $query->where('created_at', '>=', $request->fecha_desde . ' 00:00:00');
         }
 
-        if (!empty($fechaHasta)) {
-            $query->where('created_at', '<=', $fechaHasta . ' 23:59:59');
+        if ($request->filled('fecha_hasta')) {
+            $query->where('created_at', '<=', $request->fecha_hasta . ' 23:59:59');
         }
 
-        if (!empty($email)) {
-            $query->where('email', 'like', '%' . $email . '%');
+        if ($request->filled('email')) {
+            $query->where('email', 'like', '%' . $request->email . '%');
         }
 
+        // Filtros dinámicos
         foreach ($request->query() as $key => $value) {
-            // Aplicar el filtro si el parámetro NO es uno ignorado y tiene valor
-            if (!in_array($key, $ignoredParams) && !is_null($value)) {
-                // Filtro para campos específicos de la tabla (ej: 'status=enviado')
-                if (Schema::hasColumn('envios_email', $key)) {
-                    $query->where($key, $value);
-                }
-                
-                // Filtro para la metadata JSON
+
+            if (in_array($key, $ignoredParams) || $value === '' || $value === null) {
+                continue;
+            }
+
+            if (Schema::hasColumn('envios_email', $key)) {
+                $query->where($key, $value);
+            } else {
                 $query->whereJsonContains("filter_metadata->{$key}", $value);
             }
         }
-        
-        // 5. Búsqueda general de DataTables (se mantiene)
+
+        // Búsqueda global
         if (!empty($searchValue)) {
-            $query->where(function($q) use ($searchValue) {
-                $q->where('email', 'like', '%' . $searchValue . '%')
-                ->orWhere('status', 'like', '%' . $searchValue . '%')
-                ->orWhere('message_id', 'like', '%' . $searchValue . '%')
-                ->orWhere('sg_message_id', 'like', '%' . $searchValue . '%');
+            $query->where(function ($q) use ($searchValue) {
+                $q->where('email', 'like', "%{$searchValue}%")
+                ->orWhere('status', 'like', "%{$searchValue}%")
+                ->orWhere('message_id', 'like', "%{$searchValue}%");
             });
         }
 
-        // 6. Total de registros filtrados (para la paginación correcta)
-        $totalRecordwithFilter = $query->count();
+        // Total filtrado
+        $totalRecordwithFilter = (clone $query)->count();
 
-        // 7. Ordenamiento Dinámico (se mantiene)
-        $validSortColumns = ['id', 'email', 'status', 'message_id', 'sg_message_id', 'created_at', 'updated_at'];
-        
+        // Columnas permitidas para ordenar
+        $validSortColumns = [
+            'id',
+            'email',
+            'status',
+            'message_id',
+            'created_at',
+            'updated_at'
+        ];
+
         if (in_array($columnName, $validSortColumns)) {
             $query->orderBy($columnName, $columnSortOrder);
         } else {
-            $query->orderBy('id', 'DESC'); 
+            $query->orderBy('created_at', 'desc');
         }
 
-        // 8. Paginación y Obtención de datos (se mantiene)
-        $records = $query->skip($start)
+        // Registros
+        $records = $query
+            ->skip($start)
             ->take($length)
             ->get();
 
-        // 9. Respuesta JSON (se mantiene)
         return response()->json([
             'success' => true,
             'draw' => intval($draw),
-            'iTotalRecords' => $totalRecords, 
-            'iTotalDisplayRecords' => $totalRecordwithFilter, 
-            'data' => $records, 
-            'message' => 'Envíos de Email cargados con éxito!'
+            'iTotalRecords' => $totalRecords,
+            'iTotalDisplayRecords' => $totalRecordwithFilter,
+            'data' => $records,
+            'message' => 'Envíos de Email cargados con éxito.',
         ]);
     }
 

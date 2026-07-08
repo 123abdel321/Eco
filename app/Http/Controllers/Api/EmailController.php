@@ -216,6 +216,7 @@ class EmailController extends Controller
             '_',
             'fecha_desde',
             'fecha_hasta',
+            'estado',
             'email'
         ];
 
@@ -230,6 +231,10 @@ class EmailController extends Controller
 
         if ($request->filled('email')) {
             $query->where('email', 'like', '%' . $request->email . '%');
+        }
+
+        if ($request->filled('estado')) {
+            $query->where('status', $request->estado);
         }
 
         // Filtros dinámicos

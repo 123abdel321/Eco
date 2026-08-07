@@ -63,16 +63,17 @@ class EmailController extends Controller
                 'contexto' => $request->metadata['contexto'] ?? $request->aplicacion ?? 'email.api',
                 'status' => EnvioEmail::STATUS_EN_COLA,
                 'filter_metadata' => $request->filter_metadata ?? [],
-                'campos_adicionales' => [
-                    'asunto' => $request->asunto ?? 'FALLO_VALIDACION',
-                    'aplicacion' => $request->aplicacion ?? 'api',
-                    'metadata' => $request->metadata ?? [],
-                    'usa_credenciales_propias' => $usaCredencialesPropias,
-                    'credencial_id' => $credencialUsuario?->id,
-                    'html_preview' => substr($request->html ?? '', 0, 500) . '...', // Truncamos el HTML para el log
-                    'archivos' => $request->archivos ?? [],
-                    'raw_request' => $request->all(), // Guardamos el payload completo
-                ]
+                'campos_adicionales' => null,
+                // 'campos_adicionales' => [
+                //     'asunto' => $request->asunto ?? 'FALLO_VALIDACION',
+                //     'aplicacion' => $request->aplicacion ?? 'api',
+                //     'metadata' => $request->metadata ?? [],
+                //     'usa_credenciales_propias' => $usaCredencialesPropias,
+                //     'credencial_id' => $credencialUsuario?->id,
+                //     'html_preview' => substr($request->html ?? '', 0, 500) . '...', // Truncamos el HTML para el log
+                //     'archivos' => $request->archivos ?? [],
+                //     'raw_request' => $request->all(), // Guardamos el payload completo
+                // ]
             ]);
 
             // 2.3. Evaluación de la Validación
@@ -93,7 +94,7 @@ class EmailController extends Controller
                     'response' => json_encode(['errors' => $errorMessages]),
                     'error_message' => 'Fallo de validación en la solicitud: ' . $fullErrorMessage,
                     'timestamp' => now(),
-                    'campos_adicionales' => json_encode(['request_data' => $request->all()]),
+                    // 'campos_adicionales' => json_encode(['request_data' => $request->all()]),
                 ]);
                 
                 // Devolver la respuesta de error de validación (422)
@@ -455,7 +456,7 @@ class EmailController extends Controller
                         'event' => $eventType,
                         'message_id' => $trackingId,
                         'timestamp' => $timestamp,
-                        'campos_adicionales' => $event, // Guardar el evento completo para referencia
+                        // 'campos_adicionales' => $event,
                     ]);
 
                 } else {

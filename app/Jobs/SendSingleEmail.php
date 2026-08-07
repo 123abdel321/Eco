@@ -171,12 +171,12 @@ class SendSingleEmail implements ShouldQueue
                 'status' => EnvioEmail::STATUS_ENVIADO,
                 // Usamos sg_message_id para guardar el ID de seguimiento (real o temporal)
                 'message_id' => $messageId, 
-                'campos_adicionales' => array_merge(
-                    $envioEmail->campos_adicionales ?? [],
-                    ['enviado_en' => now()->toISOString()],
-                    ['driver_usado' => $driver], 
-                    ['credencial_id' => $envioEmail->campos_adicionales['credencial_id'] ?? null],
-                )
+                // 'campos_adicionales' => array_merge(
+                //     $envioEmail->campos_adicionales ?? [],
+                //     ['enviado_en' => now()->toISOString()],
+                //     ['driver_usado' => $driver], 
+                //     ['credencial_id' => $envioEmail->campos_adicionales['credencial_id'] ?? null],
+                // )
             ]);
 
         } catch (\Throwable $exception) {
@@ -245,14 +245,14 @@ class SendSingleEmail implements ShouldQueue
         Config::set("mail.mailers.{$driverName}", $creds);
 
         // 5. Actualizar el registro de EnvioEmail para guardar el ID de la credencial usada
-        $envioEmail = EnvioEmail::find($this->envioEmailId);
-        if ($envioEmail) {
-            $envioEmail->campos_adicionales = array_merge(
-                $envioEmail->campos_adicionales ?? [],
-                ['credencial_id' => $credencial->id]
-            );
-            $envioEmail->save();
-        }
+        // $envioEmail = EnvioEmail::find($this->envioEmailId);
+        // if ($envioEmail) {
+        //     $envioEmail->campos_adicionales = array_merge(
+        //         $envioEmail->campos_adicionales ?? [],
+        //         ['credencial_id' => $credencial->id]
+        //     );
+        //     $envioEmail->save();
+        // }
         
         return $driverName;
     }
@@ -261,14 +261,7 @@ class SendSingleEmail implements ShouldQueue
     {
         $envioEmail = EnvioEmail::find($this->envioEmailId);
         if ($envioEmail) {
-            $updateData = ['status' => $status];
-            if ($mensaje) {
-                $updateData['campos_adicionales'] = array_merge(
-                    $envioEmail->campos_adicionales ?? [],
-                    ['mensaje_sistema' => $mensaje]
-                );
-            }
-            $envioEmail->update($updateData);
+            $envioEmail->update(['status' => $status]);
         }
     }
 
@@ -304,12 +297,7 @@ class SendSingleEmail implements ShouldQueue
         $envioEmail = EnvioEmail::find($this->envioEmailId);
         if ($envioEmail) {
             $envioEmail->update([
-                'status' => EnvioEmail::STATUS_FALLIDO,
-                'campos_adicionales' => array_merge(
-                    $envioEmail->campos_adicionales ?? [],
-                    ['error_final' => $exception->getMessage()],
-                    ['trace' => substr($exception->getTraceAsString(), 0, 1000)]
-                )
+                'status' => EnvioEmail::STATUS_FALLIDO
             ]);
         }
     }

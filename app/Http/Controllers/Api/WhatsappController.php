@@ -81,13 +81,13 @@ class WhatsappController extends Controller
                 'contexto' => $request->contexto ?? 'whatsapp.api_template',
                 'status' => EnvioWhatsapp::STATUS_EN_COLA, 
                 'filter_metadata' => $request->filter_metadata ?? [], 
-                'campos_adicionales' => [
-                    'parameters' => $request->parameters,
-                    'aplicacion' => $request->aplicacion ?? 'api',
-                    'usa_credenciales_propias' => $usaCredencialesPropias,
-                    'credencial_id' => $credencialUsuario?->id,
-                    'raw_request' => $request->all(),
-                ]
+                // 'campos_adicionales' => [
+                //     'parameters' => $request->parameters,
+                //     'aplicacion' => $request->aplicacion ?? 'api',
+                //     'usa_credenciales_propias' => $usaCredencialesPropias,
+                //     'credencial_id' => $credencialUsuario?->id,
+                //     'raw_request' => $request->all(),
+                // ]
             ]);
 
             if (!$template) {
@@ -100,7 +100,7 @@ class WhatsappController extends Controller
                     'response' => 'Plantilla no encontrada: ' . $request->plantilla,
                     'error_message' => 'Fallo de validación: plantilla no encontrada',
                     'timestamp' => now(),
-                    'campos_adicionales' => json_encode(['request_data' => $request->all()]),
+                    // 'campos_adicionales' => json_encode(['request_data' => $request->all()]),
                 ]);
 
                 return response()->json([
@@ -123,7 +123,7 @@ class WhatsappController extends Controller
                     'response' => json_encode(['errors' => $errorMessages]),
                     'error_message' => 'Fallo de validación en la solicitud: ' . $fullErrorMessage,
                     'timestamp' => now(),
-                    'campos_adicionales' => json_encode(['request_data' => $request->all()]),
+                    // 'campos_adicionales' => json_encode(['request_data' => $request->all()]),
                 ]);
                 
                 return response()->json([
@@ -470,11 +470,11 @@ class WhatsappController extends Controller
                 'timestamp'          => now(),
                 'error_code'         => $request->input('ErrorCode', null),    // Si falla, Twilio manda esto
                 'error_message'      => $request->input('ErrorMessage', null), // Si falla, Twilio manda esto
-                'campos_adicionales' => [
-                    'account_sid' => $request->input('AccountSid'),
-                    'from'        => $request->input('From'),
-                    'raw_status'  => $statusRaw
-                ]
+                // 'campos_adicionales' => [
+                //     'account_sid' => $request->input('AccountSid'),
+                //     'from'        => $request->input('From'),
+                //     'raw_status'  => $statusRaw
+                // ]
             ]);
 
         } catch (\Exception $e) {
